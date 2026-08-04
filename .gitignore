@@ -1,0 +1,62 @@
+# Build output
+*.asi
+*.dll
+*.exe
+*.o
+*.obj
+*.a
+*.lib
+*.exp
+*.ilk
+*.pdb
+build/
+Debug/
+Release/
+out/
+cmake-build-*/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# Runtime output written next to the .asi when DebugLog = 1
+NFSTR_DefinitiveEdition.log
+*.log
+
+# Editor and OS
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.swp
+*~
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Backups and scratch
+*.bak
+*.orig
+*.rej
+*_backup/
+scratch/
+tmp/
+
+# Reverse engineering working files. These are large and are not ours to
+# redistribute: IDA databases, exports, ReClass projects, game data dumps.
+*.idb
+*.i64
+*.id0
+*.id1
+*.id2
+*.nam
+*.til
+*.map
+*.rcnet
+IDA_Dump/
+Run_Research/
