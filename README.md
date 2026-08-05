@@ -107,20 +107,12 @@ wrong. It records every patch, every address, and the bytes that were there.
 
 ## Known limitations
 
-`FixSimTickWhenDriving` runs the whole simulation at a fixed rate. It fixes
-collision detection and prop motion, but the simulation rate also drives the
-camera springs and input polling, so the chase camera goes rigid and inputs can
-drop. It ships off and is documented as a trade-off rather than a fix.
+`ViewDistance`, `DrawFps` and `ForceBlurAmount` exist in the engine's render
+settings but do nothing in the retail build. They were tested and left out.
 
-The exhaust backfire flame does not draw while that setting is on. Burst
-particles are given a lifetime counted in simulation frames but aged once per
-rendered frame, so at 144 FPS against a 30 Hz simulation they expire before they
-are ever drawn. It only happens when the two rates differ; at `FPSLimit = 30`
-the flame is back. The particle ageing code is not symbolised and the reflection
-strings for it have no cross-references, so there is no anchor to work from yet.
-
-`ViewDistance`, `DrawFps` and `ForceBlurAmount` exist in the engine settings but
-do nothing in the retail build. They were tested and left out.
+The redline crackle is quieter than it is at 30 FPS. Diagnostics showed a fourth
+engine-sound voice that renders at 3 calls per second against 315 for the other
+three, so it is being starved rather than mistuned. Not yet chased down.
 
 ## Documentation
 

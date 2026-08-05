@@ -34,7 +34,7 @@
 // field and multiplies it by our correction factor before continuing.
 //
 // This touches ONLY inherited emitter velocity. It does not alter the simulation
-// rate, so unlike FixSimTickWhenDriving it cannot affect camera, collisions or input.
+// rate, so it cannot affect the camera, collisions or input.
 
 extern "C" {
     float     g_InheritVelScale = 1.0f;   // correction factor, updated per tick
@@ -69,8 +69,8 @@ namespace {
     const uint8_t kExpectEsi[5] = { 0xF3, 0x0F, 0x10, 0x46, 0x34 };
     const uint8_t kExpectEax[5] = { 0xF3, 0x0F, 0x10, 0x40, 0x34 };
 
-    bool  g_Installed = false;
-    float g_LastLoggedScale = -1.0f;
+    bool g_Installed = false;
+    bool g_LoggedScale = false;
 
     void InstallSite(const char* name, uintptr_t off, const uint8_t* expect,
                      void* cave, uintptr_t* pReturn) {
@@ -117,9 +117,11 @@ namespace Features {
         }
 
         g_InheritVelScale = scale;
-        if (scale != g_LastLoggedScale) {
+        // Log once. The value comes from config, which cannot change while the game
+        // is running, so there is nothing to report after the first pass.
+        if (!g_LoggedScale) {
             Logger::Log("Kickup fix: inherited-velocity scale = %.4f", scale);
-            g_LastLoggedScale = scale;
+            g_LoggedScale = true;
         }
     }
 }

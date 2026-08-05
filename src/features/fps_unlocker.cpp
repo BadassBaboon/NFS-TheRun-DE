@@ -13,32 +13,10 @@ extern "C" {
     uintptr_t g_pControlReturn = 0;       // return addr for the direct (unhooked-site) path
     uintptr_t g_pControlChainTarget = 0;  // existing hook's stub, for the coexist path
 
-    // Camera delta-time override hook (smooth chase cam under FixSimTickWhenDriving)
-    float g_CameraOverrideDt = 0.0f;
-    uintptr_t g_pCameraUpdateReturn = 0;
-
     void GameTimeHookAsm();
     void ControlCheckHookAsm();
     void ControlChainHookAsm();
-    void CameraUpdateHookAsm();
 }
-
-asm(
-    ".text\n"
-    ".globl _CameraUpdateHookAsm\n"
-    "_CameraUpdateHookAsm:\n"
-    "    pushl %eax\n"
-    "    movl _g_CameraOverrideDt, %eax\n"
-    "    cmpl $0, %eax\n"
-    "    jz .L_skip_cam_override\n"
-    "    movl %eax, 8(%esp)\n"               // Replace float dt argument on stack (esp+8 after push eax)
-    ".L_skip_cam_override:\n"
-    "    popl %eax\n"
-    "    pushl %ebp\n"                       // Stolen 6 bytes at 0x00F04BE0: 55 8B EC 83 E4 F0
-    "    movl %esp, %ebp\n"
-    "    andl $-16, %esp\n"
-    "    jmpl *_g_pCameraUpdateReturn\n"     // Return to 0x00F04BE6
-);
 
 asm(
     ".text\n"
@@ -128,23 +106,6 @@ namespace Features {
             Logger::Log("GameTime hook failed at 0x%08X", hookAddr);
         }
 
-        // Chase-camera delta-time hook. This only does anything while
-        // FixSimTickWhenDriving is on (that is the only thing that sets
-        // g_CameraOverrideDt), and it is an unverified experiment, so it is not
-        // installed at all unless that feature is enabled. Leaving an untested hook
-        // in every build for no benefit is not worth the risk.
-        if (g_Config.FixSimTickWhenDriving) {
-            uintptr_t camAddr = Memory::GetGameBase() + 0x00B04BE0;
-            g_pCameraUpdateReturn = camAddr + 6;
-            const uint8_t camExpected[6] = { 0x55, 0x8B, 0xEC, 0x83, 0xE4, 0xF0 };
-            if (Memory::VerifyBytes(camAddr, camExpected, sizeof(camExpected))) {
-                if (Memory::InjectJMP(camAddr, reinterpret_cast<uintptr_t>(CameraUpdateHookAsm), 6)) {
-                    Logger::Log("Camera update delta-time hook injected at 0x%08X (experimental).", camAddr);
-                }
-            } else {
-                Logger::Log("Camera update hook skipped at 0x%08X: bytes [%s]", camAddr, Memory::BytesToHex(camAddr, 6).c_str());
-            }
-        }
 
         // The control-check hook is installed later (see InstallControlHook), after a
         // delay, so a co-loaded mod like FusionFix hooks the shared site first and we
@@ -191,10 +152,9 @@ namespace Features {
 
     void UpdateFramerateUnlocker() {
         // Deferred control-hook install: wait past startup so FusionFix hooks first.
-        // The sim clamp, the sim-tick fix and the driving-only FOV override all gate
-        // on the vehicle-control flag this hook captures.
+        // The sim-rate clamp and the driving-only FOV override both gate on the
+        // vehicle-control flag this hook captures.
         bool needControlHook = g_Config.ClampSimRateWhenNoControl
-                            || g_Config.FixSimTickWhenDriving
                             || (g_Config.EnableRenderTweaks && g_Config.ForceFovOnlyWhileDriving
                                 && g_Config.ForceFov > 0.0f);
         if (g_FrameUnlockerActive && needControlHook && !g_ControlHookAttempted
@@ -241,37 +201,14 @@ namespace Features {
             *pMaxVariableFps = targetFps;
         }
 
-        // If cutscene unlock is enabled, force variable sim tick on. This runs FIRST
-        // so the driving-gated write below can override it: otherwise the two fight
-        // over the same byte every tick (one clearing it for a cutscene, the other
-        // setting it straight back), which also spams the log.
-        if (g_Config.UnlockCutsceneFPS && !g_Config.FixSimTickWhenDriving) {
+        // Cutscene unlock: force the variable sim tick on so cutscenes and menus
+        // are not held to 30.
+        if (g_Config.UnlockCutsceneFPS) {
             if (*g_pSimTickEnable != 1) {
                 *g_pSimTickEnable = 1;
             }
         }
 
-        // Fix sim tick while driving. g_pSimTickEnable IS the active "GameTime"
-        // instance's variableSimTickTimeEnable (+0x40). Setting it true makes
-        // physics/particles run at the correct fixed rate; we revert to 0 in
-        // cutscenes/QTEs so the ANT path never engages. Placed after the cutscene
-        // block, and that block is skipped entirely when this one is enabled, so
-        // this driving-gated behaviour always wins.
-        // Does NOT fix engine audio (that needs a separate code-level 30Hz gate).
-        if (g_Config.FixSimTickWhenDriving && g_pHasControl) {
-            uint32_t desired = (*g_pHasControl != 0) ? 1u : 0u;
-            if (*g_pSimTickEnable != desired) {
-                *g_pSimTickEnable = desired;
-                Logger::Log("variableSimTickTimeEnable -> %u (%s)", desired, desired ? "driving" : "reverted");
-            }
-            if (desired != 0 && targetFps > 0.0f) {
-                g_CameraOverrideDt = 1.0f / targetFps;
-            } else {
-                g_CameraOverrideDt = 0.0f;
-            }
-        } else {
-            g_CameraOverrideDt = 0.0f;
-        }
 
         // Log changes to FPS or tick state
         if (*pMaxVariableFps != g_LastLoggedFps || *g_pSimTickEnable != g_LastLoggedTickEnable) {

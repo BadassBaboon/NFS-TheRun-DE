@@ -39,7 +39,6 @@ namespace Config {
         g_Config.DisableBasicVehicleAssists = GetPrivateProfileIntA("VEHICLE", "DisableBasicVehicleAssists", 0, iniPath);
 
         g_Config.FixEngineAudioSlew    = GetPrivateProfileIntA("HIGH_FPS_FIXES", "FixEngineAudioSlew",    1, iniPath);
-        g_Config.FixSimTickWhenDriving = GetPrivateProfileIntA("HIGH_FPS_FIXES", "FixSimTickWhenDriving", 0, iniPath);
         g_Config.FixKickupParticles     = GetPrivateProfileIntA("HIGH_FPS_FIXES", "FixKickupParticles", 1, iniPath);
         g_Config.KickupVelocityScale    = ReadIniFloat("HIGH_FPS_FIXES", "KickupVelocityScale", -1.0f, iniPath);
         g_Config.EnableRenderTweaks      = GetPrivateProfileIntA("RENDER", "EnableRenderTweaks",      1, iniPath);
@@ -87,8 +86,7 @@ namespace Config {
             g_Config.ShadowmapSliceCount, g_Config.ShadowmapViewDistance, g_Config.MultisampleCount,
             g_Config.MotionBlurEnable, g_Config.MotionBlurScale, g_Config.MotionBlurQuality,
             g_Config.MotionBlurMaxSampleCount);
-        Logger::Log("  FixEngineAudioSlew=%d  FixSimTickWhenDriving=%d  FixKickupParticles=%d  KickupVelocityScale=%.4f",
-            g_Config.FixEngineAudioSlew, g_Config.FixSimTickWhenDriving,
-            g_Config.FixKickupParticles, g_Config.KickupVelocityScale);
+        Logger::Log("  FixEngineAudioSlew=%d  FixKickupParticles=%d  KickupVelocityScale=%.4f",
+            g_Config.FixEngineAudioSlew, g_Config.FixKickupParticles, g_Config.KickupVelocityScale);
     }
 }

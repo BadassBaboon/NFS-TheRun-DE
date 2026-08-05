@@ -186,30 +186,22 @@ per-frame advance.
 
 ---
 
-## 6. Known-unfixed: the backfire flame
+## 6. The backfire flame, and why the sim-tick approach was dropped
 
-With `variableSimTickTimeEnable = true` the exhaust backfire stops drawing. The orange
-glow remains, only the flame is gone, so the trigger fires correctly and the problem is
-particle lifetime.
+Forcing `variableSimTickTimeEnable` on while driving (a setting this mod used to
+ship as `FixSimTickWhenDriving`) made particles behave, but that flag is a single
+global bit on the timer: it changes the simulation timestep for everything.
+Camera springs went rigid, collisions glued the car to guardrails and traffic,
+and inputs were dropped. It also stopped the exhaust backfire flame from drawing,
+because burst particles are given a lifetime counted in simulation frames but
+aged once per rendered frame, so at 144 FPS against a 30 Hz simulation they
+expired before they were drawn.
 
-| Sim rate | Render rate | Result |
-|---|---|---|
-| 144 | 144 | works |
-| 30 | 30 | works |
-| 30 | 144 | **broken** |
+The setting was removed. Kickup particles are fixed properly in section 9, which
+touches nothing but the inherited emitter velocity, and with the sim rate left
+alone the backfire flame draws correctly again. There is no per-emitter or
+per-system equivalent of that flag, so scoping it to particles was never possible.
 
-It only breaks when the two rates differ, so burst particles are given a lifetime in
-simulation frames but aged once per rendered frame, expiring roughly five times early.
-The engine has a `LifetimeFrameCount` emitter field, and `fb::EffectRootProcessor` has a
-`Lifetime` float (asset definition, not runtime state).
-
-**Blocked:** the runtime particle-aging code is unsymbolized and the Frostbite reflection
-strings (`LifetimeFrameCount`, `SpawnRate`, `PtSpawnRate`) have no code cross-references,
-so there is no anchor to work outward from. If resumed, the fix direction is to scale the
-particle age advance by `simDeltaTime / (1/30)`, matching Brawltendo's approach in his
-NFS Rivals unlocker.
-
----
 
 ## 7. Other verified addresses
 
@@ -237,3 +229,38 @@ to stop crashes caused by *other* cheats (debug menu, unreleased events). In a n
 race they blank live game code and the AI opponents pull to the side of the road and
 stop. Verified by bisection: with everything else off and the fixes disabled, the game
 boots and the AI is fine. The code is parked in `research/crash_fixes.cpp`.
+
+---
+
+## 9. Kickup particles
+
+Kickup emitters (snow spray, drift smoke, wet spray, dirt dust) set, in their EBX
+data:
+
+    InheritSpeedAndDirectionFromEmitter = True
+    InheritSpeedScaleAmount             = ~0.759
+
+so each particle inherits part of the emitter's velocity. The emitter is the
+wheel. Above 30 FPS that inherited velocity is over-scaled, so particles spawn in
+the right place and then streak sideways or straight up. It repeats at the same
+point on a track because the direction comes from the wheel's motion and the
+terrain there.
+
+Of 897 emitters in the game data, 124 set the inherit flag. Only kickup looks
+broken because the rest are cutscene effects, which run at a clamped 30 FPS, or
+effects on near-stationary emitters with no meaningful velocity to over-scale.
+
+`SpawnDirectionData` owns the fields: `DirectionFromEmitterOrigin` `0x30`,
+`InheritSpeedScaleAmount` `0x34`, `InheritSpeedAndDirectionFromEmitter` `0x38`,
+`UseProcessorForSpeedScale` `0x39`.
+
+Two sites apply it, same shape with different base registers:
+
+| Site | Instruction | Guard |
+|---|---|---|
+| `0x01385D3B` | `movss xmm0,[esi+0x34]` | `cmp byte [esi+0x38],0` @ `0x01385D14` |
+| `0x013895FB` | `movss xmm0,[eax+0x34]` | `cmp byte [eax+0x38],0` @ `0x013895D4` |
+
+The contribution is `InheritSpeedScaleAmount * emitterVelocity`, so scaling the
+first term cancels the over-scale. Each site is exactly 5 bytes and is replaced
+with a jump to a cave that loads the field and multiplies it by `30 / FPSLimit`.

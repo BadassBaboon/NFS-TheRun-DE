@@ -27,7 +27,7 @@ namespace Features {
     // Fixes the engine-audio pitch above 30 FPS. INI-gated.
     void InitEngineAudioSlewFix();
 
-    // High-FPS particle scaling & component frame interpolation fix (Path A)
+    // Kickup particle fix: corrects inherited emitter velocity above 30 FPS.
     void InitParticleFix();
     void UpdateParticleFix();
 

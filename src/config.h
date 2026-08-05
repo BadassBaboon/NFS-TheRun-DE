@@ -35,11 +35,6 @@ struct ConfigStruct {
     // Fixes the engine-audio pitch above 30 FPS. 1 = snap (recommended),
     // 2 = keep the pitch glide but only re-arm it once finished.
     int FixEngineAudioSlew = 1;
-    // Sets variableSimTickTimeEnable true while driving so physics/collisions and
-    // continuous particles run at the correct rate. Costs the backfire flame and
-    // makes dynamic props step at the sim rate. 0 = off.
-    int FixSimTickWhenDriving = 0;
-    // High-FPS particle scaling & component interpolation fix (Path A)
     // Fixes kickup particles (snow spray, drift smoke) above 30 FPS.
     int FixKickupParticles = 1;
     // >0 overrides the automatic 30/fps correction, for tuning by eye.
