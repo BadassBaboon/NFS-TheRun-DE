@@ -53,13 +53,14 @@ or missing road segments. Clearing the render target each frame fixes it.
 
 The Run's Extreme difficulty mostly just makes the AI quicker. Pick Extreme with
 this on and the mod recognises it and hardens the rules: the difficulty is
-renamed to **DEADLY** in the menus, nitrous and drafting are disabled, the one
-checkpoint reset Extreme grants is taken away, and your car is capped to half its
-usual health. Damage still works normally — you just have half the buffer, and
-nothing to fall back on when it runs out.
+renamed to **DEADLY** in the menus, and nitrous, drafting and the driving assists
+are all stripped from your car, which is capped to half its usual health. Damage
+still works normally — you just have half the buffer.
 
-Drafting is removed for the player only; AI cars keep their slipstream. Removing
-it from everyone would have been an advantage dressed up as a difficulty.
+Every one of those is removed from the **player only**; the AI keeps all three.
+That distinction is the whole design. Taking something away from the entire field
+is an advantage dressed up as a difficulty, which is exactly what the community
+cheat-table assist patches turned out to be.
 
 A fifth difficulty is not possible from an ASI. The menu is a fixed list of four
 items in an EBX asset, `RaceAIDifficulty` has exactly four values, and the AI
@@ -83,7 +84,7 @@ All off by default unless noted.
 | Vehicle health | Holds the car's health high so damage never reaches the wreck screen. A cheat rather than a fix, so it ships off. Ignored while Run For Your Life is engaged. |
 | Viewport shift and camera roll | Raises or tilts the view. Conflicts with FusionFix's camera; see the INI. |
 | Traffic density, max density and car count | |
-| Driving assists | Mostly an AI handicap rather than a player setting, despite the names they came with — the racing-line values are shared physics with no human-player check, and two of the patches invert that check rather than disabling anything. Turning them on makes the race easier. Documented in full in the INI. |
+| Driving assists | Strips the racing-line and road-alignment assists from your car only, keyed on the game's own human-player flag. Replaces thirteen cheat-table byte patches that degraded the AI more than the player and made races easier. |
 | Checkpoint timer, out-of-bounds reset, wrong-way respawn | For free roam and experimenting. |
 | QA debug menu and photo mode | |
 

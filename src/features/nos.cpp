@@ -24,6 +24,19 @@
 // registers as pressed, and it can be turned on and off live — no race reload is
 // needed for the difficulty to take effect or stop applying.
 //
+// PLAYER ONLY. This is not optional. The decompiler shows nosEnabled being set
+// for AI cars as well:
+//
+//     v25 = a4 == 0 && playerSpawnType;   // playerSpawnType != 0 means an AI car
+//     v26 = (this->dword187C & 0x20000) != 0 || v25;
+//     raceInputState->nosEnabled = v26;
+//
+// so a cave that zeroes the flag for everyone takes nitrous away from the whole
+// field, which makes a race easier rather than harder. The same mistake the
+// community assist patches made. The cave therefore checks isHumanPlayer at
+// [esi+0x102], stored earlier in this same function at 0x0069AAD3, and leaves AI
+// cars exactly as they were.
+//
 // Only the first flag is touched. 0xB6 is computed from the vehicle's own state
 // rather than from input, and killing the input flag is already enough: with it
 // held at zero the boost is never requested in the first place.
@@ -50,11 +63,13 @@ asm(
     ".globl _NosHookAsm\n"
     "_NosHookAsm:\n"
     "    cmpb $0, _g_DisableNos\n"
-    "    jne  1f\n"
-    "    movb %bl, 0xB5(%esi)\n"      // stock behaviour: pass the real input through
+    "    je   1f\n"
+    "    cmpb $0, 0x102(%esi)\n"      // isHumanPlayer — AI keeps its nitrous
+    "    je   1f\n"
+    "    movb $0, 0xB5(%esi)\n"       // nitrous suppressed, player only
     "    jmp  2f\n"
     "1:\n"
-    "    movb $0, 0xB5(%esi)\n"       // nitrous suppressed
+    "    movb %bl, 0xB5(%esi)\n"      // stock behaviour: pass the real input through
     "2:\n"
     "    jmpl *_g_pNosReturn\n"
 );

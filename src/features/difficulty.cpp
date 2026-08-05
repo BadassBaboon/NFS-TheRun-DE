@@ -26,10 +26,10 @@
 // rules, and letting the INI soften them would make "Run For Your Life" mean
 // something different on every machine.
 //
-// The driving assists are NOT part of this mode, despite looking like an obvious
-// fit. Testing showed they barely change the player's car while wrecking the AI,
-// and the decompiler explains why — see the note in vehicle.cpp. Disabling them
-// here would have made the race easier, not harder.
+// Drafting and the driving assists are switched player-only from input_state.cpp,
+// which reads RunForYourLifeActive() each tick. They are deliberately NOT the old
+// cheat-table byte patches: those degraded the AI more than the player and made
+// races easier. See the note at the top of input_state.cpp.
 
 namespace {
     const uintptr_t kDifficultyGlobal = 0x248AC40; // module offset of dword_288AC40
@@ -97,6 +97,5 @@ namespace Features {
         // Nitrous is a flag the per-frame hook reads, not a code patch, so it can
         // be switched at any moment including mid-race.
         SetNosDisabled(g_Active);
-        SetDraftingDisabled(g_Active);
     }
 }

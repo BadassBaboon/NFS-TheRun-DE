@@ -16,12 +16,10 @@ set(SOURCES
     src/features/fps_unlocker.cpp
     src/features/track_rules.cpp
     src/features/traffic.cpp
-    src/features/vehicle.cpp
     src/features/player_vehicle.cpp
     src/features/difficulty.cpp
     src/features/nos.cpp
-    src/features/drafting.cpp
-    src/features/rewinds.cpp
+    src/features/input_state.cpp
     src/features/difficulty_text.cpp
     src/features/engine_audio.cpp
     src/features/particle_fix.cpp

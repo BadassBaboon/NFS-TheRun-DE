@@ -36,9 +36,10 @@ struct ConfigStruct {
     float TrafficMaxDensity = 0.15f;
     int TrafficVehicleLimit = 25;
 
-    // [VEHICLE] — OFF by default; strips driving assists
-    int DisableAllVehicleAssists = 0;
-    int DisableBasicVehicleAssists = 0;
+    // [VEHICLE]
+    // Blanks the racing-line and road-alignment assists for the PLAYER's car only;
+    // AI cars are untouched. Run For Your Life forces this on.
+    int DisablePlayerAssists = 0;
     // fb::NFSVehicle::m_health (offset 0x1878, float). Stock 100; the wreck
     // screen fires when damage drives it low enough. <=0 leaves it alone.
     float VehicleHealth = -1.0f;

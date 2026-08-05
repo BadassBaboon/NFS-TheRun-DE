@@ -111,7 +111,7 @@ namespace {
 
 namespace Features {
     void UpdateRewinds() {
-        if (!g_Config.RunForYourLife || g_Failed) return;
+        if (!g_Config.RunForYourLife || !g_Config.ZeroCheckpointResets || g_Failed) return;
 
         if (!g_Resolved) {
             // The career data is not loaded at boot, so this keeps looking rather

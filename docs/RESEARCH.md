@@ -522,3 +522,71 @@ sixteen, so it always walked the entire address space.
 The rewind search now looks for the twenty-byte `10, 5, 3, 1, 99` first and only
 falls back to the sixteen-byte array, and gives up after 24 passes rather than
 rescanning forever.
+
+## 19. Player-only assists, and what the rewind UI does not do
+
+### Assists, done properly
+
+Section 14 established that the cheat-table assist patches degraded the AI more
+than the player. The fix is to stop patching shared physics and instead blank the
+player's own fields, keyed on the flag the game already computes:
+
+    [esi+0x102]  isHumanPlayer               mov  at 0x0069AAD3
+    [esi+0x290]  racelineAssistForceScalar   fstp at 0x0069B48E
+    [esi+0x294]  racelineAssistTorqueScalar  fstp at 0x0069B4C4
+    [esi+0x299]  alignToRoad                 mov  at 0x0069B1A9 (byte)
+
+One cave at 0x0069B680 handles this and drafting together, because that write is
+the last of the group and eight bytes wide. The thirteen byte patches are gone.
+
+### The rewind HUD
+
+Zeroing `RewindsPerDifficulty[3]` changes the gameplay correctly — a crash goes
+straight to game over — but the HUD is not driven from that array. It still shows
+a reset count, the reset button does nothing, and the reset message appears with
+an infinity glyph before the game-over screen.
+
+The count shown was 2 where Extreme grants 1, and the candidate accepted in
+testing had no trailing `99`, so it is not confirmed that the array found is the
+career's own. The remaining-rewinds counter the HUD reads is a separate runtime
+value that has not been located; `UIRewindDataBinding` in
+`_c4/UI/Flow/Screen/LoadScreens/RewindLoop.xml` binds it to `NFSUIRaceInfoComp`
+with DataKey 0x43b317e6, which is the thread to pull next.
+
+The feature was removed from the build and parked in `research/rewinds.cpp`. The
+memory-scanning approach in it is sound and reusable; what is missing is the HUD
+counter, not the search.
+
+## 20. Nitrous was not player-only either
+
+The first nitrous cave zeroed `nosEnabled` for every vehicle. The decompiler shows
+AI cars get the flag too:
+
+    v25 = a4 == 0 && playerSpawnType;        // playerSpawnType != 0 means AI
+    v26 = (this->dword187C & 0x20000) != 0 || v25;
+    raceInputState->nosEnabled = v26;        // 0x0069B064
+
+so the difficulty was quietly removing nitrous from the whole field, which makes a
+race easier. Same failure as the cheat-table assist patches, found the same way —
+by asking whether a field is written for AI cars as well before touching it.
+
+Now gated on `isHumanPlayer` at `[esi+0x102]`, like drafting and the assists. The
+rule this establishes for anything added to the mode: before suppressing a field
+in `collectRaceCarInputState`, check whether the AI reads it too.
+
+## 21. AI difficulty scalars — the next lever
+
+`sub_1261E40` copies an AI performance struct and multiplies two of its fields by
+per-difficulty scalars:
+
+    0x01261EB8  a2+8  *= glueScalar        (cheat-table site exe+0xE61EA1)
+    0x01261EF6  a2+12 *= difficultyScalar  (cheat-table site exe+0xE61ED9)
+
+Both scalars are read from `[eax]` at those sites, which is what mRally2's
+"Difficulty Scalar" and "Glue Scalar" scripts overwrite — with 5.0 and 0.7
+respectively. Being AI-side, these cannot leak onto the player's car, which makes
+them a much safer lever than anything in `collectRaceCarInputState`.
+
+This is the piece that would make DEADLY genuinely faster rather than only making
+the player weaker. Not yet implemented; the direction each scalar moves needs
+testing before shipping a value.

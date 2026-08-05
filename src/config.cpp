@@ -35,10 +35,9 @@ namespace Config {
         g_Config.TrafficMaxDensity     = ReadIniFloat("TRAFFIC", "TrafficMaxDensity",   0.15f, iniPath);
         g_Config.TrafficVehicleLimit   = GetPrivateProfileIntA("TRAFFIC", "TrafficVehicleLimit", 25, iniPath);
 
-        g_Config.DisableAllVehicleAssists   = GetPrivateProfileIntA("VEHICLE", "DisableAllVehicleAssists",   0, iniPath);
         g_Config.RunForYourLife       = GetPrivateProfileIntA("DIFFICULTY", "RunForYourLife", 1, iniPath);
 
-        g_Config.DisableBasicVehicleAssists = GetPrivateProfileIntA("VEHICLE", "DisableBasicVehicleAssists", 0, iniPath);
+        g_Config.DisablePlayerAssists       = GetPrivateProfileIntA("VEHICLE", "DisablePlayerAssists", 0, iniPath);
         g_Config.VehicleHealth              = ReadIniFloat("VEHICLE", "VehicleHealth", -1.0f, iniPath);
 
         g_Config.FixEngineAudioSlew    = GetPrivateProfileIntA("HIGH_FPS_FIXES", "FixEngineAudioSlew",    1, iniPath);
@@ -75,8 +74,7 @@ namespace Config {
             g_Config.DisableCheckpointTimer, g_Config.DisableResetOOB, g_Config.DisableWrongWayRespawn);
         Logger::Log("  EnableTrafficControls=%d  TrafficDensityScale=%.3f  TrafficMaxDensity=%.3f  TrafficVehicleLimit=%d",
             g_Config.EnableTrafficControls, g_Config.TrafficDensityScale, g_Config.TrafficMaxDensity, g_Config.TrafficVehicleLimit);
-        Logger::Log("  DisableAllVehicleAssists=%d  DisableBasicVehicleAssists=%d",
-            g_Config.DisableAllVehicleAssists, g_Config.DisableBasicVehicleAssists);
+        Logger::Log("  DisablePlayerAssists=%d", g_Config.DisablePlayerAssists);
         Logger::Log("  VehicleHealth=%.1f", g_Config.VehicleHealth);
         Logger::Log("  RunForYourLife=%d", g_Config.RunForYourLife);
         Logger::Log("  EnableRenderTweaks=%d  ForceFov=%.1f  FovDrivingOnly=%d  ForceRenderShiftEnabled=%d  ShiftX=%.3f  ShiftY=%.3f  ForceRoll=%.3f  FixMinimapRendering=%d",

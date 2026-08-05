@@ -42,24 +42,16 @@ namespace Features {
     // Forces traffic density scale, max density, and vehicle limit. INI-gated, OFF by default.
     void InitTrafficControls();
 
-    // Strips driving assists (RaceLineAssist, drift/raceline analyzers, extra forces).
-    // INI-gated, OFF by default.
-    void InitVehicleAssists();
-
     // Nitrous suppression for Run For Your Life. The hook is installed once; the
     // flag it reads is flipped live, so no code is rewritten when the mode
     // engages or disengages.
     void InitNosControl();
     void SetNosDisabled(bool disabled);
 
-    // Drafting suppression for Run For Your Life. Player only — AI cars keep
-    // their slipstream, so this is a handicap rather than an advantage.
-    void InitDraftingControl();
-    void SetDraftingDisabled(bool disabled);
-
-    // Forces the Extreme checkpoint-reset ("rewind") allowance to zero. Finds the
-    // career's RewindsPerDifficulty array by its contents. Runs from the ticker.
-    void UpdateRewinds();
+    // Drafting and driving-assist suppression, both PLAYER ONLY. One cave keyed
+    // on the game's own isHumanPlayer flag, so AI cars are never affected.
+    void InitInputStateHook();
+    void UpdateInputState();
 
     // Run For Your Life: recognises the game's Extreme difficulty and hardens it.
     // Runs from the ticker. INI-gated.
