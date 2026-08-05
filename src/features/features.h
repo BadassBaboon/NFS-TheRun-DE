@@ -57,6 +57,11 @@ namespace Features {
     void InitNosTuning();
     void UpdateNosTuning();
 
+    // Randomises each level's time of day within the presets it supports. Not
+    // tied to the difficulty mode; applies everywhere including challenge series.
+    void InitTodRandomizer();
+    void UpdateTodRandomizer();
+
     // Run For Your Life: recognises the game's Extreme difficulty and hardens it.
     // Runs from the ticker. INI-gated.
     void UpdateDifficulty();

@@ -37,6 +37,7 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
     Features::InitInputStateHook();
     Features::InitAiDifficulty();
     Features::InitNosTuning();
+    Features::InitTodRandomizer();
     Features::InitGinsuDiagnostics();
     Features::InitFramerateUnlocker();
 
@@ -50,6 +51,7 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
         Features::UpdateInputState();     // reads that decision, so it runs after
         Features::UpdateAiDifficulty();
         Features::UpdateNosTuning();
+        Features::UpdateTodRandomizer();
         Features::UpdateDifficultyText();
         Features::UpdatePlayerVehicle();  // reads that decision, so it runs after
         Features::UpdateRenderSettings();

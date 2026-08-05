@@ -35,12 +35,13 @@ namespace Config {
         g_Config.TrafficMaxDensity     = ReadIniFloat("TRAFFIC", "TrafficMaxDensity",   0.15f, iniPath);
         g_Config.TrafficVehicleLimit   = GetPrivateProfileIntA("TRAFFIC", "TrafficVehicleLimit", 25, iniPath);
 
-        g_Config.RunForYourLife       = GetPrivateProfileIntA("DIFFICULTY", "RunForYourLife", 1, iniPath);
-        g_Config.DeadlyPlayerNosRechargeScale = ReadIniFloat("DIFFICULTY", "DeadlyPlayerNosRechargeScale", 1.0f, iniPath);
-        g_Config.DeadlyPlayerNosStrengthScale = ReadIniFloat("DIFFICULTY", "DeadlyPlayerNosStrengthScale", 1.0f, iniPath);
-        g_Config.DeadlyAiNosRechargeScale     = ReadIniFloat("DIFFICULTY", "DeadlyAiNosRechargeScale",     2.0f, iniPath);
-        g_Config.DeadlyAiSkillScale   = ReadIniFloat("DIFFICULTY", "DeadlyAiSkillScale", 5.0f, iniPath);
-        g_Config.DeadlyAiGlueScale    = ReadIniFloat("DIFFICULTY", "DeadlyAiGlueScale",  2.0f, iniPath);
+        g_Config.RandomizeTimeOfDay   = GetPrivateProfileIntA("GAMEPLAY", "RandomizeTimeOfDay", 0, iniPath);
+        g_Config.RunForYourLife       = GetPrivateProfileIntA("GAMEPLAY", "RunForYourLife", 1, iniPath);
+        g_Config.DeadlyPlayerNosRechargeScale = ReadIniFloat("GAMEPLAY", "DeadlyPlayerNosRechargeScale", 1.0f, iniPath);
+        g_Config.DeadlyPlayerNosStrengthScale = ReadIniFloat("GAMEPLAY", "DeadlyPlayerNosStrengthScale", 1.0f, iniPath);
+        g_Config.DeadlyAiNosRechargeScale     = ReadIniFloat("GAMEPLAY", "DeadlyAiNosRechargeScale",     2.0f, iniPath);
+        g_Config.DeadlyAiSkillScale   = ReadIniFloat("GAMEPLAY", "DeadlyAiSkillScale", 5.0f, iniPath);
+        g_Config.DeadlyAiGlueScale    = ReadIniFloat("GAMEPLAY", "DeadlyAiGlueScale",  2.0f, iniPath);
 
         g_Config.DisablePlayerAssists       = GetPrivateProfileIntA("VEHICLE", "DisablePlayerAssists", 0, iniPath);
         g_Config.VehicleHealth              = ReadIniFloat("VEHICLE", "VehicleHealth", -1.0f, iniPath);
@@ -81,6 +82,7 @@ namespace Config {
             g_Config.EnableTrafficControls, g_Config.TrafficDensityScale, g_Config.TrafficMaxDensity, g_Config.TrafficVehicleLimit);
         Logger::Log("  DisablePlayerAssists=%d", g_Config.DisablePlayerAssists);
         Logger::Log("  VehicleHealth=%.1f", g_Config.VehicleHealth);
+        Logger::Log("  RandomizeTimeOfDay=%d", g_Config.RandomizeTimeOfDay);
         Logger::Log("  RunForYourLife=%d  DeadlyAiSkillScale=%.2f  DeadlyAiGlueScale=%.2f",
             g_Config.RunForYourLife, g_Config.DeadlyAiSkillScale, g_Config.DeadlyAiGlueScale);
         Logger::Log("  NOS: PlayerRecharge=%.2f  PlayerStrength=%.2f  AiRecharge=%.2f",

@@ -7,13 +7,17 @@ struct ConfigStruct {
     // [MAIN]
     int DebugLog = 1;
 
-    // [DIFFICULTY] — Run For Your Life. Recognises the game's Extreme difficulty
+    // [GAMEPLAY] — Run For Your Life. Recognises the game's Extreme difficulty
     // and hardens it. While engaged it owns vehicle health and the assists, and
     // the [VEHICLE] settings are ignored so the mode means the same thing on
     // every machine.
     // This switch is the whole of it. What the mode does is fixed in code, in
     // Difficulty::, so that "Run For Your Life" means one thing everywhere and
     // cannot be quietly softened from an INI.
+    // Randomises each level's time of day within the presets that level actually
+    // supports. Independent of the difficulty mode.
+    int RandomizeTimeOfDay = 0;
+
     int RunForYourLife = 1;
     // TEMPORARY tuning knobs for the AI scalars. 1.0 = the game's own value.
     // These get hardcoded into Difficulty:: and removed once the right values

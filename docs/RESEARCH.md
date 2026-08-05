@@ -669,3 +669,58 @@ clear of it.
 
 Both caves use x87 with matched fld/fstp pairs, so the FPU stack is balanced and
 no flags are touched either way.
+
+## 25. Time-of-day randomizer
+
+Ported from _mRally2's TOD Randomizer table. Every event is authored at one fixed
+time of day, so repeated runs down a stretch look identical; randomizing inside
+what each level supports makes the game feel less rehearsed without altering play.
+
+### The site
+
+`sub_99BEB0` is a state-transition handler. On the transition into a level:
+
+    0x0099BF25  mov ecx, [eax+64h]     the time-of-day preset
+    0x0099BF28  push 1
+    0x0099BF31  call sub_E650D0        applies it
+
+Bytes `8B 48 64 6A 01` — five exactly, a jump with nothing left over. The level is
+identified by a GUID four bytes below the object: the cheat table reads it as
+`[timeofday] - 0x68`, and since `timeofday` is `eax+0x64` that resolves to
+`eax-4`.
+
+The cheat table hooks this instruction only to capture the address, then writes
+from a Lua timer. This mod does the work inside the hook instead, so the value is
+already randomized when the original instruction loads it — nothing has to win a
+race against a ticker.
+
+### Why a per-level table
+
+Levels do not all implement every preset. The source table notes "NIGHT TOD IS NOT
+IMPLEMENTED" against Get Outta San Francisco, and picking a preset a level cannot
+render gives a broken or black scene. So each level carries its own legal set,
+generated into `tod_table.h`: 128 events, values 0-8.
+
+Conversion was checked rather than trusted. Each arm of the source's Lua
+if/elseif chain declares its own `math.random(1,N)`, and every one of the 128
+converted arms has exactly N presets in its set. No GUID appears twice.
+
+A GUID absent from the table is left alone. An unknown level is not a licence to
+guess, and the failure mode for guessing wrong is a scene that will not render.
+
+Car Crusher is excluded deliberately: the source reaches it through a different
+pointer chain and writes a second value for New Jersey Junkyard, which is not
+replicated here.
+
+### The cave
+
+`pushal`/`pushfl` bracket a plain cdecl call, so the C side can do as it likes
+without disturbing the game's registers or flags. The randomizer is integer-only
+and touches no floating point, keeping it clear of the x87 and SSE state the
+surrounding code depends on. It uses its own xorshift rather than `rand()`, since
+it runs on the game's thread from inside a detour and should not share CRT state.
+
+### Section rename
+
+`[DIFFICULTY]` became `[GAMEPLAY]`, since it now holds this alongside Run For Your
+Life and the randomizer is not tied to any difficulty.
