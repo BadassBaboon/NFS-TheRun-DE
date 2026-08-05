@@ -53,13 +53,7 @@ namespace Config {
         g_Config.EnableWorldRenderTweaks  = GetPrivateProfileIntA("WORLDRENDER", "EnableWorldRenderTweaks",  0, iniPath);
         g_Config.ShadowmapResolution      = GetPrivateProfileIntA("WORLDRENDER", "ShadowmapResolution",     -1, iniPath);
         g_Config.ShadowmapQuality         = GetPrivateProfileIntA("WORLDRENDER", "ShadowmapQuality",        -1, iniPath);
-        g_Config.ShadowmapSliceCount      = GetPrivateProfileIntA("WORLDRENDER", "ShadowmapSliceCount",     -1, iniPath);
         g_Config.ShadowmapViewDistance    = ReadIniFloat("WORLDRENDER", "ShadowmapViewDistance",         -1.0f, iniPath);
-        g_Config.MultisampleCount         = GetPrivateProfileIntA("WORLDRENDER", "MultisampleCount",        -1, iniPath);
-        g_Config.MotionBlurEnable         = GetPrivateProfileIntA("WORLDRENDER", "MotionBlurEnable",        -1, iniPath);
-        g_Config.MotionBlurScale          = ReadIniFloat("WORLDRENDER", "MotionBlurScale",               -1.0f, iniPath);
-        g_Config.MotionBlurQuality        = GetPrivateProfileIntA("WORLDRENDER", "MotionBlurQuality",       -1, iniPath);
-        g_Config.MotionBlurMaxSampleCount = GetPrivateProfileIntA("WORLDRENDER", "MotionBlurMaxSampleCount",-1, iniPath);
 
         g_Config.LogGinsuDiagnostics   = GetPrivateProfileIntA("DIAGNOSTICS",    "LogGinsuDiagnostics",   0, iniPath);
         g_Config.LogSettingsContainers = GetPrivateProfileIntA("DIAGNOSTICS",    "LogSettingsContainers", 0, iniPath);
@@ -81,11 +75,9 @@ namespace Config {
         Logger::Log("  EnableRenderTweaks=%d  ForceFov=%.1f  FovDrivingOnly=%d  ForceRenderShiftEnabled=%d  ShiftX=%.3f  ShiftY=%.3f  ForceRoll=%.3f  FixMinimapRendering=%d",
             g_Config.EnableRenderTweaks, g_Config.ForceFov, g_Config.ForceFovOnlyWhileDriving, g_Config.ForceRenderShiftEnabled,
             g_Config.ForceRenderShiftX, g_Config.ForceRenderShiftY, g_Config.ForceRoll, g_Config.FixMinimapRendering);
-        Logger::Log("  EnableWorldRenderTweaks=%d  ShadowmapRes=%d  ShadowQuality=%d  Slices=%d  ShadowDist=%.0f  MSAA=%d  MBlur=%d/%.2f/q%d/s%d",
-            g_Config.EnableWorldRenderTweaks, g_Config.ShadowmapResolution, g_Config.ShadowmapQuality,
-            g_Config.ShadowmapSliceCount, g_Config.ShadowmapViewDistance, g_Config.MultisampleCount,
-            g_Config.MotionBlurEnable, g_Config.MotionBlurScale, g_Config.MotionBlurQuality,
-            g_Config.MotionBlurMaxSampleCount);
+        Logger::Log("  EnableWorldRenderTweaks=%d  ShadowmapRes=%d  ShadowQuality=%d  ShadowDist=%.0f",
+            g_Config.EnableWorldRenderTweaks, g_Config.ShadowmapResolution,
+            g_Config.ShadowmapQuality, g_Config.ShadowmapViewDistance);
         Logger::Log("  FixEngineAudioSlew=%d  FixKickupParticles=%d  KickupVelocityScale=%.4f",
             g_Config.FixEngineAudioSlew, g_Config.FixKickupParticles, g_Config.KickupVelocityScale);
     }

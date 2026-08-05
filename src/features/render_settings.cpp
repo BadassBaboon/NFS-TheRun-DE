@@ -58,16 +58,20 @@ namespace {
 }
 
 // ---------------------------------------------------------------------------
-// fb::WorldRenderSettings — shadows, motion blur, MSAA.
+// fb::WorldRenderSettings — shadow settings.
 //
 // Unlike GameRenderSettings this has no static cached pointer, so it is resolved
 // through the settings manager the same way settings_probe.cpp does. It also only
 // exists once a level is loaded, so this quietly does nothing until then.
 //
-// IMPORTANT: several of these are read once when the renderer initialises a level,
-// because they size render targets (shadow maps, MSAA buffers, slice arrays).
-// Changing them mid-race does nothing. That is fine here because the ticker keeps
-// writing them, so the values are already in place the next time a level loads.
+// IMPORTANT: these are read once when the renderer initialises a level, because
+// they size the shadow render targets. Changing them mid-race does nothing. That
+// is fine here because the ticker keeps writing them, so the values are already in
+// place the next time a level loads.
+//
+// Motion blur, MSAA and the cascade slice count live in this same object and were
+// wired up at one point, but testing showed none of them do anything in the retail
+// build, so they were removed rather than shipped as settings that quietly fail.
 namespace {
     const uintptr_t kSettingsManagerPtr   = 0x2446C74; // fb::g_settingsManager
     const uintptr_t kGetContainerFn       = 0x0E72D0;  // SettingsManager::getContainer
@@ -78,13 +82,7 @@ namespace {
     // WorldRenderSettings offsets, from the game's own reflection data.
     const uintptr_t kOffShadowmapResolution   = 0x044;
     const uintptr_t kOffShadowmapQuality      = 0x048;
-    const uintptr_t kOffShadowmapSliceCount   = 0x04C;
     const uintptr_t kOffShadowmapViewDistance = 0x058;
-    const uintptr_t kOffMotionBlurScale       = 0x098;
-    const uintptr_t kOffMotionBlurQuality     = 0x0A0;
-    const uintptr_t kOffMotionBlurMaxSamples  = 0x0AC;
-    const uintptr_t kOffMultisampleCount      = 0x0B8;
-    const uintptr_t kOffMotionBlurEnable      = 0x1AE;
 
     bool g_LoggedWorld = false;
 
@@ -112,14 +110,7 @@ namespace {
 
         if (g_Config.ShadowmapResolution   > 0) WriteInt(w, kOffShadowmapResolution,   g_Config.ShadowmapResolution);
         if (g_Config.ShadowmapQuality      >= 0) WriteInt(w, kOffShadowmapQuality,     g_Config.ShadowmapQuality);
-        if (g_Config.ShadowmapSliceCount   > 0) WriteInt(w, kOffShadowmapSliceCount,   g_Config.ShadowmapSliceCount);
         if (g_Config.ShadowmapViewDistance > 0.0f) WriteFloat(w, kOffShadowmapViewDistance, g_Config.ShadowmapViewDistance);
-        if (g_Config.MultisampleCount      > 0) WriteInt(w, kOffMultisampleCount,      g_Config.MultisampleCount);
-
-        if (g_Config.MotionBlurEnable      >= 0) WriteBool(w, kOffMotionBlurEnable, g_Config.MotionBlurEnable != 0);
-        if (g_Config.MotionBlurScale       >= 0.0f) WriteFloat(w, kOffMotionBlurScale, g_Config.MotionBlurScale);
-        if (g_Config.MotionBlurQuality     >= 0) WriteInt(w, kOffMotionBlurQuality,    g_Config.MotionBlurQuality);
-        if (g_Config.MotionBlurMaxSampleCount > 0) WriteInt(w, kOffMotionBlurMaxSamples, g_Config.MotionBlurMaxSampleCount);
     }
 }
 

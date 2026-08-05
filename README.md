@@ -56,8 +56,8 @@ All off by default unless noted.
 | Setting | Notes |
 |---|---|
 | Field of view | The game runs 48, which is why the chase camera sits on the bumper. Defaults to 60, and only while driving so the garage is untouched. |
-| Shadow map resolution | Stock is 512. 1024 and 2048 are visibly sharper. |
-| Motion blur, MSAA, shadow distance and slices | Read once when a level loads, so they apply from the next event. |
+| Shadow map resolution | The game runs 2048 at its highest preset. 4096 is visibly sharper and is what this ships with. |
+| Shadow filtering and draw distance | Filtering at 0 or 2 turns the softening off for hard-edged shadows. Both are read once when a level loads, so they apply from the next event. |
 | Viewport shift and camera roll | Raises or tilts the view. Conflicts with FusionFix's camera; see the INI. |
 | Traffic density, max density and car count | |
 | Driving assists | Turns off the racing-line and drift assists that steer for you. Five patches for the basic set, thirteen for all of them. |
@@ -107,8 +107,11 @@ wrong. It records every patch, every address, and the bytes that were there.
 
 ## Known limitations
 
-`ViewDistance`, `DrawFps` and `ForceBlurAmount` exist in the engine's render
-settings but do nothing in the retail build. They were tested and left out.
+Several engine settings exist but do nothing in the retail build, so they are not
+offered: `ViewDistance`, `DrawFps` and `ForceBlurAmount` in the render settings,
+and motion blur, MSAA and the shadow cascade slice count in the world render
+settings. All were wired up, tested and removed rather than shipped as options
+that quietly fail.
 
 The redline crackle is quieter than it is at 30 FPS. Diagnostics showed a fourth
 engine-sound voice that renders at 3 calls per second against 315 for the other

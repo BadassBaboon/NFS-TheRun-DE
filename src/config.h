@@ -50,18 +50,14 @@ struct ConfigStruct {
     float ForceRoll = 0.0f;
     int FixMinimapRendering = 1;         // InitialClearEnable
 
-    // [WORLDRENDER] — fb::WorldRenderSettings. Resolved via the settings manager,
-    // not a static pointer. -1 on every value means "leave the engine's own alone".
+    // [WORLDRENDER] — fb::WorldRenderSettings. Resolved through the settings
+    // manager, not a static pointer. -1 means "leave the engine's own value".
+    // Only the shadow settings are here: motion blur, MSAA and the cascade slice
+    // count were all tested and have no effect in the retail build.
     int EnableWorldRenderTweaks = 0;
-    int ShadowmapResolution = -1;        // stock 512
-    int ShadowmapQuality = -1;           // stock 1
-    int ShadowmapSliceCount = -1;        // stock 33
+    int ShadowmapResolution = -1;        // 2048 at the game's highest preset
+    int ShadowmapQuality = -1;           // stock 1; 0 or 2 disable the filtering
     float ShadowmapViewDistance = -1.0f; // stock 200
-    int MultisampleCount = -1;           // stock 1
-    int MotionBlurEnable = -1;           // stock on; 0 = off, 1 = on
-    float MotionBlurScale = -1.0f;       // stock 0.2
-    int MotionBlurQuality = -1;          // stock 1
-    int MotionBlurMaxSampleCount = -1;   // stock 5
 
     // [DIAGNOSTICS] Log Ginsu render state ~1x/sec per voice. Troubleshooting only.
     int LogGinsuDiagnostics = 0;

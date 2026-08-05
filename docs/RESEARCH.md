@@ -203,6 +203,29 @@ alone the backfire flame draws correctly again. There is no per-emitter or
 per-system equivalent of that flag, so scoping it to particles was never possible.
 
 
+## 6b. `fb::WorldRenderSettings` (tested)
+
+Resolved through the settings manager, not a cached pointer, and only after a level
+has loaded. Offsets from the game's reflection data; see `SETTINGS_FIELDS.md` for the
+full class.
+
+| Offset | Field | Result |
+|---|---|---|
+| `0x044` | `ShadowmapResolution` | **works.** 2048 at the highest in-game preset; 4096 is visibly sharper |
+| `0x048` | `ShadowmapQuality` | **works.** 1 gives soft edges; 0 or 2 appear to switch filtering off, leaving hard edges |
+| `0x058` | `ShadowmapViewDistance` | **works.** stock 200 |
+| `0x04C` | `ShadowmapSliceCount` | no effect |
+| `0x0B8` | `MultisampleCount` | no effect |
+| `0x098` | `MotionBlurScale` | no effect |
+| `0x0A0` | `MotionBlurQuality` | no effect |
+| `0x0AC` | `MotionBlurMaxSampleCount` | no effect |
+| `0x1AE` | `MotionBlurEnable` | no effect, does not toggle motion blur |
+
+These are read once when the renderer sets up a level, so they take effect from the
+next event rather than mid-race. Only the three that work are shipped.
+
+---
+
 ## 7. Other verified addresses
 
 | What | Address | Notes |
