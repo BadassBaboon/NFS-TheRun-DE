@@ -79,6 +79,20 @@ namespace {
 
     typedef uintptr_t (__fastcall *GetContainerFn)(uintptr_t self, uintptr_t edx, uintptr_t typeInfo);
 
+    // Resolves a settings container by its c_TypeInfo module offset. Returns 0
+    // until the manager exists and that class has been registered, which for the
+    // render classes means "not until a level is loaded".
+    uintptr_t ResolveContainer(uintptr_t typeInfoOffset) {
+        uintptr_t gameBase = Memory::GetGameBase();
+        uintptr_t mgr = *reinterpret_cast<uintptr_t*>(gameBase + kSettingsManagerPtr);
+        if (mgr < 0x10000) return 0;
+
+        GetContainerFn getContainer =
+            reinterpret_cast<GetContainerFn>(gameBase + kGetContainerFn);
+        uintptr_t c = getContainer(mgr, 0, gameBase + typeInfoOffset);
+        return (c < 0x10000) ? 0 : c;
+    }
+
     // WorldRenderSettings offsets, from the game's own reflection data.
     const uintptr_t kOffShadowmapResolution   = 0x044;
     const uintptr_t kOffShadowmapQuality      = 0x048;
@@ -94,14 +108,8 @@ namespace {
     void ApplyWorldRender() {
         if (!g_Config.EnableWorldRenderTweaks) return;
 
-        uintptr_t gameBase = Memory::GetGameBase();
-        uintptr_t mgr = *reinterpret_cast<uintptr_t*>(gameBase + kSettingsManagerPtr);
-        if (mgr < 0x10000) return;
-
-        GetContainerFn getContainer =
-            reinterpret_cast<GetContainerFn>(gameBase + kGetContainerFn);
-        uintptr_t w = getContainer(mgr, 0, gameBase + kWorldRenderTypeInfo);
-        if (w < 0x10000) return;   // not registered until a level is loaded
+        uintptr_t w = ResolveContainer(kWorldRenderTypeInfo);
+        if (!w) return;
 
         if (!g_LoggedWorld) {
             Logger::Log("World render tweaks: WorldRenderSettings at 0x%08X.", w);
@@ -114,9 +122,40 @@ namespace {
     }
 }
 
+// ---------------------------------------------------------------------------
+// fb::ShaderSystemSettings — anisotropic filtering.
+//
+// MaxAnisotropy is an int32 at 0x94, confirmed against the game's own reflection
+// data and read live in ReClass. It ships at 4 and the engine writes it back to 4
+// every time a level loads, so this has to be reapplied rather than set once; the
+// ticker does that for free.
+namespace {
+    const uintptr_t kShaderSystemTypeInfo = 0x2AA3428 - 0x400000;
+    const uintptr_t kOffMaxAnisotropy     = 0x94;
+
+    bool g_LoggedShader = false;
+
+    void ApplyShaderSystem() {
+        if (g_Config.AnisotropicFiltering < 0) return;
+
+        uintptr_t s = ResolveContainer(kShaderSystemTypeInfo);
+        if (!s) return;
+
+        if (!g_LoggedShader) {
+            Logger::Log("Anisotropic filtering: ShaderSystemSettings at 0x%08X, MaxAnisotropy -> %d (was %d).",
+                        s, g_Config.AnisotropicFiltering,
+                        *reinterpret_cast<int32_t*>(s + kOffMaxAnisotropy));
+            g_LoggedShader = true;
+        }
+
+        WriteInt(s, kOffMaxAnisotropy, g_Config.AnisotropicFiltering);
+    }
+}
+
 namespace Features {
     void UpdateRenderSettings() {
         ApplyWorldRender();
+        ApplyShaderSystem();
 
         if (!g_Config.EnableRenderTweaks) return;
 

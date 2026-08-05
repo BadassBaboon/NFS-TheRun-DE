@@ -38,6 +38,10 @@ namespace Features {
     // Runs from the ticker because the settings pointer is populated lazily.
     void UpdateRenderSettings();
 
+    // Holds the player car's health high so damage never reaches the wreck
+    // threshold. INI-gated, OFF by default. Runs from the ticker.
+    void UpdatePlayerVehicle();
+
     // Logs every Frostbite settings-container address once. Troubleshooting/research.
     void UpdateSettingsProbe();
 }

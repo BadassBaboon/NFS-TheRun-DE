@@ -30,6 +30,9 @@ struct ConfigStruct {
     // [VEHICLE] — OFF by default; strips driving assists
     int DisableAllVehicleAssists = 0;
     int DisableBasicVehicleAssists = 0;
+    // fb::NFSVehicle::m_health (offset 0x1878, float). Stock 100; the wreck
+    // screen fires when damage drives it low enough. <=0 leaves it alone.
+    float VehicleHealth = -1.0f;
 
     // [HIGH_FPS_FIXES]
     // Fixes the engine-audio pitch above 30 FPS. 1 = snap (recommended),
@@ -58,6 +61,11 @@ struct ConfigStruct {
     int ShadowmapResolution = -1;        // 2048 at the game's highest preset
     int ShadowmapQuality = -1;           // stock 1; 0 or 2 disable the filtering
     float ShadowmapViewDistance = -1.0f; // stock 200
+
+    // [TEXTURE] — fb::ShaderSystemSettings::MaxAnisotropy (offset 0x94, int32).
+    // Stock 4. The engine rewrites it back to 4 whenever a level loads, so the
+    // ticker keeps reapplying it. -1 leaves the engine's own value.
+    int AnisotropicFiltering = -1;
 
     // [DIAGNOSTICS] Log Ginsu render state ~1x/sec per voice. Troubleshooting only.
     int LogGinsuDiagnostics = 0;

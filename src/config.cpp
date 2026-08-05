@@ -37,6 +37,7 @@ namespace Config {
 
         g_Config.DisableAllVehicleAssists   = GetPrivateProfileIntA("VEHICLE", "DisableAllVehicleAssists",   0, iniPath);
         g_Config.DisableBasicVehicleAssists = GetPrivateProfileIntA("VEHICLE", "DisableBasicVehicleAssists", 0, iniPath);
+        g_Config.VehicleHealth              = ReadIniFloat("VEHICLE", "VehicleHealth", -1.0f, iniPath);
 
         g_Config.FixEngineAudioSlew    = GetPrivateProfileIntA("HIGH_FPS_FIXES", "FixEngineAudioSlew",    1, iniPath);
         g_Config.FixKickupParticles     = GetPrivateProfileIntA("HIGH_FPS_FIXES", "FixKickupParticles", 1, iniPath);
@@ -55,6 +56,8 @@ namespace Config {
         g_Config.ShadowmapQuality         = GetPrivateProfileIntA("WORLDRENDER", "ShadowmapQuality",        -1, iniPath);
         g_Config.ShadowmapViewDistance    = ReadIniFloat("WORLDRENDER", "ShadowmapViewDistance",         -1.0f, iniPath);
 
+        g_Config.AnisotropicFiltering     = GetPrivateProfileIntA("TEXTURE",     "AnisotropicFiltering",    -1, iniPath);
+
         g_Config.LogGinsuDiagnostics   = GetPrivateProfileIntA("DIAGNOSTICS",    "LogGinsuDiagnostics",   0, iniPath);
         g_Config.LogSettingsContainers = GetPrivateProfileIntA("DIAGNOSTICS",    "LogSettingsContainers", 0, iniPath);
     }
@@ -72,12 +75,14 @@ namespace Config {
             g_Config.EnableTrafficControls, g_Config.TrafficDensityScale, g_Config.TrafficMaxDensity, g_Config.TrafficVehicleLimit);
         Logger::Log("  DisableAllVehicleAssists=%d  DisableBasicVehicleAssists=%d",
             g_Config.DisableAllVehicleAssists, g_Config.DisableBasicVehicleAssists);
+        Logger::Log("  VehicleHealth=%.1f", g_Config.VehicleHealth);
         Logger::Log("  EnableRenderTweaks=%d  ForceFov=%.1f  FovDrivingOnly=%d  ForceRenderShiftEnabled=%d  ShiftX=%.3f  ShiftY=%.3f  ForceRoll=%.3f  FixMinimapRendering=%d",
             g_Config.EnableRenderTweaks, g_Config.ForceFov, g_Config.ForceFovOnlyWhileDriving, g_Config.ForceRenderShiftEnabled,
             g_Config.ForceRenderShiftX, g_Config.ForceRenderShiftY, g_Config.ForceRoll, g_Config.FixMinimapRendering);
         Logger::Log("  EnableWorldRenderTweaks=%d  ShadowmapRes=%d  ShadowQuality=%d  ShadowDist=%.0f",
             g_Config.EnableWorldRenderTweaks, g_Config.ShadowmapResolution,
             g_Config.ShadowmapQuality, g_Config.ShadowmapViewDistance);
+        Logger::Log("  AnisotropicFiltering=%d", g_Config.AnisotropicFiltering);
         Logger::Log("  FixEngineAudioSlew=%d  FixKickupParticles=%d  KickupVelocityScale=%.4f",
             g_Config.FixEngineAudioSlew, g_Config.FixKickupParticles, g_Config.KickupVelocityScale);
     }

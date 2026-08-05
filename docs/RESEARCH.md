@@ -287,3 +287,56 @@ Two sites apply it, same shape with different base registers:
 The contribution is `InheritSpeedScaleAmount * emitterVelocity`, so scaling the
 first term cancels the over-scale. Each site is exactly 5 bytes and is replaced
 with a jump to a cave that loads the field and multiplies it by `30 / FPSLimit`.
+
+## 10. Anisotropic filtering (fb::ShaderSystemSettings)
+
+`MaxAnisotropy` is an int32 at offset 0x94, confirmed both in the game's own
+reflection data and read live in ReClass. It ships at 4. The engine rewrites it
+back to 4 whenever a level loads, so it has to be reapplied rather than set once.
+
+The container is resolved with the standard `getContainer` call using
+`fb::ShaderSystemSettings::c_TypeInfo` at 0x2AA3428.
+
+Neighbouring fields, for reference: `ZOnlyMaxAnisotropy` 0x84, `MipmapBias` 0x9C
+(float), `DxMaxInstructionCount` 0xA4, `DatabaseLoadingEnable` 0xB0.
+
+`fb::DxDisplaySettings` was checked against ReClass at the same time and matches
+exactly: `FullscreenWidth` 0x18, `FullscreenHeight` 0x20, `FullscreenRefreshRate`
+0x2C, `VSyncEnable` 0x40, `FullscreenModeEnable` 0x42, `Fullscreen` 0x48.
+
+### Shader and streaming flags that do nothing
+
+`DxImmutableUsageEnable`, `InstantUnloadingEnable`, `PushBasedLoadingEnable`,
+`PriorityThreshold`, `OnDemandBuildingEnable` and `DxMaxInstructionCount` were all
+tested against load times and visuals. None changed anything, and two of them are
+written back to their stock values on the next level load. Load times in this game
+are not gated by anything reachable from these settings.
+
+An earlier note in this file gave `DxParallelShaderLoadingEnable` at 0x10C and
+`DxDelayedShaderLoadingEnable` at 0x10B. Those came from a heuristic that assumed a
+field record follows each string, and strict containment showed no class array holds
+them. Treat them as unverified; they are not used anywhere in the build.
+
+## 11. Player vehicle (fb::NFSVehicle::m_health)
+
+`m_health` is a float at 0x1878, read live in ReClass. It sits at 100 and falls as
+the car takes damage; the wreck screen fires once it drops far enough.
+
+NFSVehicle is a heap object with no settings container, so it is reached through the
+pointer chain _mRally2's Master Table uses for its vehicle lights, wrecked trigger
+and explosion request entries:
+
+    [[[[[[exe+0x26858B0] + 0x88] + 0x38] + 0xD0] + 0x14C] + 0x8]
+
+Relative to that final object the table reads a lights byte at 0xAE3, a wrecked
+trigger at 0xAEA and an explosion request at 0xAEC, which is consistent with a
+multi-kilobyte vehicle object that also carries m_health at 0x1878.
+
+Every link is VirtualQuery-checked before it is followed and the health value is
+range-checked before it is written, so a chain that lands somewhere else on another
+build logs and skips instead of corrupting memory. The write repeats each tick,
+because damage is applied continuously and a one-shot write would be undone by the
+next collision.
+
+The control-check site at exe+0x3F6C73 was ruled out as a route to the vehicle: its
+`esi` has fields at 0x10, 0x30 and 0xD0 only, so it is a camera or input controller.

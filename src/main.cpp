@@ -44,6 +44,7 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
     while (true) {
         Features::UpdateFramerateUnlocker();
         Features::UpdateParticleFix();
+        Features::UpdatePlayerVehicle();
         Features::UpdateRenderSettings();
         Features::UpdateSettingsProbe();
         Sleep(16); // ~60 Hz tick
