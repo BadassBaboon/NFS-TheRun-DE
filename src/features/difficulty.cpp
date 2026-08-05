@@ -21,15 +21,15 @@
 // so the live value is [[exe+0x248AC40] + 0x24]. Expert = 3 is confirmed by
 // mRally2's "AI Difficulty Expert" script, which writes that constant.
 //
-// While the mode is active it OWNS the health and assist settings: whatever is in
-// [VEHICLE] is ignored. That is deliberate. The point of the mode is a known,
-// fixed set of rules, and letting the INI soften them would make "Run For Your
-// Life" mean something different on every machine.
+// While the mode is active it owns the vehicle health, so [VEHICLE] VehicleHealth
+// is ignored. That is deliberate: the point of the mode is a known, fixed set of
+// rules, and letting the INI soften them would make "Run For Your Life" mean
+// something different on every machine.
 //
-// Assists are code patches, so switching them means writing to executable memory
-// that the physics code runs from. Transitions are held until the player has no
-// vehicle control, which is any menu, load or cutscene, so the bytes are never
-// rewritten underneath a thread that is mid-race.
+// The driving assists are NOT part of this mode, despite looking like an obvious
+// fit. Testing showed they barely change the player's car while wrecking the AI,
+// and the decompiler explains why — see the note in vehicle.cpp. Disabling them
+// here would have made the race easier, not harder.
 
 namespace {
     const uintptr_t kDifficultyGlobal = 0x248AC40; // module offset of dword_288AC40
@@ -39,7 +39,6 @@ namespace {
 
     bool g_Active = false;
     bool g_LoggedGlobal = false;
-    bool g_WarnedDeferred = false;
     int  g_LastSeen = -1;
 }
 
@@ -88,32 +87,15 @@ namespace Features {
         bool shouldBeActive = (difficulty == kDifficultyExpert);
         if (shouldBeActive != g_Active) {
             Logger::Log(shouldBeActive
-                        ? "RUN FOR YOUR LIFE engaged: health forced to %.0f, all assists off, [VEHICLE] ignored."
-                        : "Run For Your Life disengaged: [VEHICLE] settings apply again.",
+                        ? "RUN FOR YOUR LIFE engaged: health capped at %.0f, nitrous disabled, "
+                          "[VEHICLE] VehicleHealth ignored."
+                        : "Run For Your Life disengaged: nitrous restored, [VEHICLE] applies again.",
                         Difficulty::kHealthCap);
             g_Active = shouldBeActive;
         }
 
-        // Only rewrite the assist patches while the player is not driving. If the
-        // control hook never installed we cannot tell, so leave the code alone
-        // rather than patch it at an unknown moment.
-        int wanted = g_Active ? 2 : VehicleAssistLevelFromConfig();
-        bool canPatch = (g_pHasControl != nullptr && *g_pHasControl == 0);
-
-        if (!canPatch) {
-            // Say so rather than skip quietly. Without this the log would list the
-            // mode as engaged while the assists were still stock, which reads as
-            // everything having applied when it has not.
-            if (wanted != CurrentVehicleAssistLevel() && !g_WarnedDeferred) {
-                Logger::Log("Run For Your Life: the assist change is waiting until you are not "
-                            "driving. Patching that code mid-race is not safe, so it lands at "
-                            "the next menu, load or cutscene.");
-                g_WarnedDeferred = true;
-            }
-            return;
-        }
-        g_WarnedDeferred = false;
-
-        SetVehicleAssistLevel(wanted);
+        // Nitrous is a flag the per-frame hook reads, not a code patch, so it can
+        // be switched at any moment including mid-race.
+        SetNosDisabled(g_Active);
     }
 }

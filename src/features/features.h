@@ -45,13 +45,12 @@ namespace Features {
     // Strips driving assists (RaceLineAssist, drift/raceline analyzers, extra forces).
     // INI-gated, OFF by default.
     void InitVehicleAssists();
-    // 0 = stock, 1 = basic set, 2 = everything. Idempotent; only the groups that
-    // change are rewritten. Call only while the player has no vehicle control.
-    void SetVehicleAssistLevel(int level);
-    // The level the [VEHICLE] toggles ask for, ignoring Run For Your Life.
-    int  VehicleAssistLevelFromConfig();
-    // The level currently patched into the code.
-    int  CurrentVehicleAssistLevel();
+
+    // Nitrous suppression for Run For Your Life. The hook is installed once; the
+    // flag it reads is flipped live, so no code is rewritten when the mode
+    // engages or disengages.
+    void InitNosControl();
+    void SetNosDisabled(bool disabled);
 
     // Run For Your Life: recognises the game's Extreme difficulty and hardens it.
     // Runs from the ticker. INI-gated.

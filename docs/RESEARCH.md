@@ -377,3 +377,77 @@ and the log reports the exact number of characters that fit.
 
 `EXTREME` is seven characters and the copies sit back to back with no padding, so
 seven is the hard ceiling for the replacement label. The shipped `DEADLY` is six.
+
+## 13. Nitrous (fb::NFSVehicle::collectRaceCarInputState)
+
+IDA names this function, so there is no ambiguity about the site:
+
+    0x0069B064  mov [esi+0B5h], bl            <- NOS input flag
+    0x0069B06A  test byte ptr [edi+1882h], 8
+    0x0069B08C  mov [esi+0B6h], al            <- second "extra NOS" flag
+
+`esi` is the `EA::VehiclePhysics::RaceCar::InputState` being filled in and `edi` is
+the NFSVehicle — 0x1882 sits just past m_health at 0x1878, which corroborates both.
+Two independent cheat tables hook this same instruction to kill nitrous: mRally2's
+Master Table ("Nos Enabled") and the All American Run table ("NOS Disable").
+
+The useful property is that this runs every frame during input collection, not once
+at vehicle spawn. Zeroing the flag means nitrous never registers as pressed, and it
+can be toggled live — no race reload is needed for the change to take or to stop.
+
+Only 0xB5 is touched. 0xB6 is derived from vehicle state rather than input, and
+suppressing the input flag already prevents the boost from being requested.
+
+Original bytes: `88 9E B5 00 00 00` (6). The obvious replacement,
+`mov byte ptr [esi+0B5h], 0`, assembles to 7 and does not fit, which is why both
+cheat tables use a code cave. This mod does too, with one addition: the cave tests a
+flag and either passes the real input through or writes zero, so engaging and
+disengaging the difficulty never rewrites executable bytes. The cave clobbers only
+the flags register, which is safe because the instruction it returns to is a `test`.
+
+## 14. Vehicle assists are mostly an AI handicap
+
+Play-testing found the `DisableAllVehicleAssists` patches made no perceptible
+difference to the player's car while AI cars slid, crashed and dropped off the pace.
+Decompiling `fb::NFSVehicle::collectRaceCarInputState` explains both halves:
+
+- `racelineAssistForceScalar` and `racelineAssistTorqueScalar` are written into
+  every vehicle's `RaceCar::InputState` with no `isHumanPlayer` gate. They are
+  shared vehicle physics, and the AI depends on the racing line far more than a
+  human does.
+- Two of the patches invert an `isHumanPlayer` test rather than disabling anything.
+  At 0x69B167 the original is `if (isHumanPlayer && ...) alignToRoad = 1`, so
+  flipping the branch grants the assist to AI cars and removes it from the player.
+  0x69B5E2 has the same shape, and despite the "OverrideDriftIntent" name it
+  inherited from the cheat table it actually gates `nosRechargeScalar`.
+
+Consequence: enabling them makes a race EASIER. They are kept as an option but
+documented for what they are, and Run For Your Life does not use them.
+
+## 15. Checkpoint resets are called "rewinds"
+
+`_c4/gameplay/TheRun/TheRunInfo.xml` (`StoryModeInfo`) holds the career config:
+
+    Difficulties          = [Easy, Normal, Hard, Extreme]
+    RewindsPerDifficulty  = [ 10,    5,     3,     1    ]
+    UnlimitedRewindsValue = 0x63 (99)
+
+This independently confirms the RaceAIDifficulty ordering used in difficulty.cpp,
+and matches the single reset observed on Extreme. Individual events can override
+the count through `OverrideRewindsPerDifficulty`, and `HideNumRewindsRemaining`
+controls whether the counter is drawn.
+
+To force zero rewinds the array has to be found in memory. It is an EBX asset
+instance rather than a settings container, so getContainer cannot reach it, but
+the four values are a distinctive 16-byte signature:
+`0A 00 00 00  05 00 00 00  03 00 00 00  01 00 00 00`, optionally followed by
+`63 00 00 00` if UnlimitedRewindsValue is stored inline after it. Same approach as
+the menu-string search in difficulty_text.cpp. Not yet implemented.
+
+## 16. The nitrous HUD widget
+
+`_c4/UI/Assets/WidgetHudNitrous` is a bare `UIWidgetAsset` — no `WidgetEvents`,
+no `WidgetFunctions`, and no `UIBoolDataSourceInfo` visibility binding of the kind
+the difficulty menu items use. There is therefore no data-driven flag to flip to
+hide it; suppressing it would mean intercepting the widget where the HUD composes
+it, which is a much larger job than the nitrous suppression itself. Left alone.

@@ -35,6 +35,7 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
     Features::InitVehicleAssists();
     Features::InitEngineAudioSlewFix();
     Features::InitParticleFix();
+    Features::InitNosControl();
     Features::InitGinsuDiagnostics();
     Features::InitFramerateUnlocker();
 

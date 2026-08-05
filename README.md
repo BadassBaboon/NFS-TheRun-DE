@@ -53,9 +53,9 @@ or missing road segments. Clearing the render target each frame fixes it.
 
 The Run's Extreme difficulty mostly just makes the AI quicker. Pick Extreme with
 this on and the mod recognises it and hardens the rules: the difficulty is
-renamed to **DEADLY** in the menus, every driving assist is switched off, and
-your car is capped to half its usual health, so the crashes you used to walk away
-from now end the run. Damage still works normally — you just have half the buffer.
+renamed to **DEADLY** in the menus, nitrous is disabled outright, and your car is
+capped to half its usual health, so the crashes you used to walk away from now end
+the run. Damage still works normally — you just have half the buffer.
 
 A fifth difficulty is not possible from an ASI. The menu is a fixed list of four
 items in an EBX asset, `RaceAIDifficulty` has exactly four values, and the AI
@@ -79,7 +79,7 @@ All off by default unless noted.
 | Vehicle health | Holds the car's health high so damage never reaches the wreck screen. A cheat rather than a fix, so it ships off. Ignored while Run For Your Life is engaged. |
 | Viewport shift and camera roll | Raises or tilts the view. Conflicts with FusionFix's camera; see the INI. |
 | Traffic density, max density and car count | |
-| Driving assists | Turns off the racing-line and drift assists that steer for you. Five patches for the basic set, thirteen for all of them. Ignored while Run For Your Life is engaged. |
+| Driving assists | Mostly an AI handicap rather than a player setting, despite the names they came with — the racing-line values are shared physics with no human-player check, and two of the patches invert that check rather than disabling anything. Turning them on makes the race easier. Documented in full in the INI. |
 | Checkpoint timer, out-of-bounds reset, wrong-way respawn | For free roam and experimenting. |
 | QA debug menu and photo mode | |
 

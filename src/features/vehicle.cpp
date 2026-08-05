@@ -15,6 +15,26 @@
 // Every patch verifies the original instruction before writing, so a version
 // mismatch aborts instead of corrupting code. Offsets are module-relative
 // (VA - 0x400000), used with GetGameBase().
+//
+// WHAT THESE ACTUALLY DO, which is not what the cheat-table names suggest.
+// Testing found no change to the player's car and AI cars sliding, crashing and
+// dropping off the pace. Decompiling fb::NFSVehicle::collectRaceCarInputState
+// shows why, and it is worth writing down:
+//
+//   - racelineAssistForceScalar and racelineAssistTorqueScalar are written into
+//     every vehicle's input state with no isHumanPlayer check. They are shared
+//     vehicle physics, and the AI leans on the racing line far more than you do.
+//
+//   - Two of the patches do not disable anything, they invert an isHumanPlayer
+//     test. AlignToRoad at 0x69B167 is "if (isHumanPlayer && ...) alignToRoad = 1",
+//     so flipping the branch hands the assist to the AI and takes it from the
+//     player. 0x69B5E2 has the same shape and, despite the "OverrideDriftIntent"
+//     name it inherited, actually gates nosRechargeScalar.
+//
+// So this is closer to an AI-handicap switch than a player-assist switch. It is
+// kept because it is genuinely interesting to play with, but it is documented in
+// the INI for what it is, and Run For Your Life deliberately does not use it:
+// turning these off makes the race easier, not harder.
 
 namespace {
     struct BytePatch {
@@ -76,50 +96,22 @@ namespace {
         }
     }
 
-    // 0 = stock, 1 = basic set, 2 = everything. Tracked so transitions only touch
-    // the groups that actually change.
-    int g_AssistLevel = 0;
-
-    int ConfiguredAssistLevel() {
-        if (g_Config.DisableAllVehicleAssists)   return 2;
-        if (g_Config.DisableBasicVehicleAssists) return 1;
-        return 0;
-    }
 }
 
 namespace Features {
-    void SetVehicleAssistLevel(int level) {
-        if (level == g_AssistLevel) return;
-
-        static const char* kNames[] = { "stock", "BASIC", "ALL" };
-        Logger::Log("Vehicle assists: %s -> %s.", kNames[g_AssistLevel], kNames[level]);
-
-        // The basic group is a subset of the full set, so each group is simply
-        // driven to whether the new level needs it.
-        ApplyGroup(kBasicPatches,    kBasicCount, level >= 1);
-        ApplyGroup(kAllExtraPatches, kExtraCount, level >= 2);
-
-        g_AssistLevel = level;
-    }
-
     void InitVehicleAssists() {
-        // When Run For Your Life is enabled it owns the assists outright, and the
-        // level is chosen from the difficulty each tick instead. Leaving the code
-        // untouched here keeps the two from writing the same bytes at boot.
-        if (g_Config.RunForYourLife) {
-            Logger::Log("Vehicle assists: managed by Run For Your Life, [VEHICLE] toggles ignored.");
-            return;
-        }
-
-        int level = ConfiguredAssistLevel();
-        if (level == 0) {
+        // "All" is a superset of "Basic"; if both are set, apply the full set once.
+        if (g_Config.DisableAllVehicleAssists) {
+            Logger::Log("Disabling ALL vehicle assists (%u patches).",
+                        static_cast<unsigned>(kBasicCount + kExtraCount));
+            ApplyGroup(kBasicPatches,    kBasicCount, true);
+            ApplyGroup(kAllExtraPatches, kExtraCount, true);
+        } else if (g_Config.DisableBasicVehicleAssists) {
+            Logger::Log("Disabling BASIC vehicle assists (%u patches).",
+                        static_cast<unsigned>(kBasicCount));
+            ApplyGroup(kBasicPatches, kBasicCount, true);
+        } else {
             Logger::Log("Vehicle assists: no changes (both toggles off).");
-            return;
         }
-        SetVehicleAssistLevel(level);
     }
-
-    int VehicleAssistLevelFromConfig() { return ConfiguredAssistLevel(); }
-
-    int CurrentVehicleAssistLevel() { return g_AssistLevel; }
 }
