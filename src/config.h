@@ -15,6 +15,11 @@ struct ConfigStruct {
     // Difficulty::, so that "Run For Your Life" means one thing everywhere and
     // cannot be quietly softened from an INI.
     int RunForYourLife = 1;
+    // TEMPORARY tuning knobs for the AI scalars. 1.0 = the game's own value.
+    // These get hardcoded into Difficulty:: and removed once the right values
+    // are known, the same way KickupVelocityScale was settled.
+    float DeadlyAiSkillScale = 5.0f;
+    float DeadlyAiGlueScale  = 2.0f;
 
     // [GRAPHICS_FPS]
     int EnableFramerateUnlocker = 1;   // master gate: injects GameTime + control hooks

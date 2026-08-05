@@ -587,6 +587,43 @@ Both scalars are read from `[eax]` at those sites, which is what mRally2's
 respectively. Being AI-side, these cannot leak onto the player's car, which makes
 them a much safer lever than anything in `collectRaceCarInputState`.
 
-This is the piece that would make DEADLY genuinely faster rather than only making
-the player weaker. Not yet implemented; the direction each scalar moves needs
-testing before shipping a value.
+Implemented in ai_difficulty.cpp. Verified bytes at both sites:
+
+    0x01261EA1  F3 0F 10 00  F3 0F 10 4E 08   movss xmm0,[eax] / movss xmm1,[esi+8]
+    0x01261ED9  F3 0F 10 00  F3 0F 10 4E 0C   movss xmm0,[eax] / movss xmm1,[esi+0Ch]
+
+Nine bytes each, which is the 5-byte jump plus padding, and the same span the
+cheat table replaces. Each cave reproduces both instructions with a `mulss`
+between them, so the scalar the game read is scaled before it is applied. `mulss`
+does not write the flags register, so unlike the input-state caves there is
+nothing to reason about on the return path.
+
+`DeadlyAiSkillScale` and `DeadlyAiGlueScale` are temporary INI knobs at 1.0, which
+is a no-op. They exist only to find the right values by feel; once known, the
+numbers get hardcoded into `Difficulty::` and the settings are removed, the same
+path the kickup particle scale is on.
+
+## 22. Nitrous suppression withdrawn
+
+The nitrous hook worked exactly as intended and was removed from the build anyway.
+The Run is designed around nitrous: several timed events and chase sequences are
+close to unwinnable without it, so suppressing it did not make the game harder, it
+made parts of it impossible. The code is preserved in `research/nos.cpp`, correct
+and player-only, in case a mode ever wants it.
+
+Worth recording as a design rule, because it is not a reverse-engineering problem
+at all: a difficulty option has to leave every event completable. Removing a
+mechanic the game's own encounters are balanced around fails that test even when
+the implementation is perfect.
+
+## 23. AI scalar values
+
+Play-testing settled on `DeadlyAiSkillScale = 5.0` and `DeadlyAiGlueScale = 2.0` —
+losable races that remain winnable. Both stay in the INI rather than being
+hardcoded like the rest of the mode's rules: they raise the challenge rather than
+soften it, so exposing them cannot be used to water the difficulty down.
+
+The skill default matches the value mRally2's table forces as an outright cheat,
+which is a reasonable sanity check that the site does what it appears to. Glue
+turned out to be "higher keeps the pack on you" rather than the reverse, which was
+the open question when the hooks went in.

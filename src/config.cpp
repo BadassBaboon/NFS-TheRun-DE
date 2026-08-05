@@ -36,6 +36,8 @@ namespace Config {
         g_Config.TrafficVehicleLimit   = GetPrivateProfileIntA("TRAFFIC", "TrafficVehicleLimit", 25, iniPath);
 
         g_Config.RunForYourLife       = GetPrivateProfileIntA("DIFFICULTY", "RunForYourLife", 1, iniPath);
+        g_Config.DeadlyAiSkillScale   = ReadIniFloat("DIFFICULTY", "DeadlyAiSkillScale", 5.0f, iniPath);
+        g_Config.DeadlyAiGlueScale    = ReadIniFloat("DIFFICULTY", "DeadlyAiGlueScale",  2.0f, iniPath);
 
         g_Config.DisablePlayerAssists       = GetPrivateProfileIntA("VEHICLE", "DisablePlayerAssists", 0, iniPath);
         g_Config.VehicleHealth              = ReadIniFloat("VEHICLE", "VehicleHealth", -1.0f, iniPath);
@@ -76,7 +78,8 @@ namespace Config {
             g_Config.EnableTrafficControls, g_Config.TrafficDensityScale, g_Config.TrafficMaxDensity, g_Config.TrafficVehicleLimit);
         Logger::Log("  DisablePlayerAssists=%d", g_Config.DisablePlayerAssists);
         Logger::Log("  VehicleHealth=%.1f", g_Config.VehicleHealth);
-        Logger::Log("  RunForYourLife=%d", g_Config.RunForYourLife);
+        Logger::Log("  RunForYourLife=%d  DeadlyAiSkillScale=%.2f  DeadlyAiGlueScale=%.2f",
+            g_Config.RunForYourLife, g_Config.DeadlyAiSkillScale, g_Config.DeadlyAiGlueScale);
         Logger::Log("  EnableRenderTweaks=%d  ForceFov=%.1f  FovDrivingOnly=%d  ForceRenderShiftEnabled=%d  ShiftX=%.3f  ShiftY=%.3f  ForceRoll=%.3f  FixMinimapRendering=%d",
             g_Config.EnableRenderTweaks, g_Config.ForceFov, g_Config.ForceFovOnlyWhileDriving, g_Config.ForceRenderShiftEnabled,
             g_Config.ForceRenderShiftX, g_Config.ForceRenderShiftY, g_Config.ForceRoll, g_Config.FixMinimapRendering);

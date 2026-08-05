@@ -18,7 +18,7 @@ set(SOURCES
     src/features/traffic.cpp
     src/features/player_vehicle.cpp
     src/features/difficulty.cpp
-    src/features/nos.cpp
+    src/features/ai_difficulty.cpp
     src/features/input_state.cpp
     src/features/difficulty_text.cpp
     src/features/engine_audio.cpp

@@ -53,11 +53,21 @@ or missing road segments. Clearing the render target each frame fixes it.
 
 The Run's Extreme difficulty mostly just makes the AI quicker. Pick Extreme with
 this on and the mod recognises it and hardens the rules: the difficulty is
-renamed to **DEADLY** in the menus, and nitrous, drafting and the driving assists
-are all stripped from your car, which is capped to half its usual health. Damage
-still works normally — you just have half the buffer.
+renamed to **DEADLY** in the menus, drafting and the driving assists are stripped
+from your car, and your car is capped to half its usual health. Damage still works
+normally — you just have half the buffer.
 
-Every one of those is removed from the **player only**; the AI keeps all three.
+The AI is also scaled up rather than only the player being weakened, through the
+per-difficulty skill and rubber-banding multipliers the game already applies to
+it. Those two are adjustable in the INI, since how much challenge a player wants
+is a fair question; everything else about the mode is fixed.
+
+Both removals are player-only — the AI keeps its drafting and its assists.
+
+Nitrous is deliberately left alone. It was disabled at one point and that was a
+mistake: the game is designed around it, and several timed and chase events are
+close to unwinnable without it. A difficulty that makes events impossible is not a
+harder game.
 That distinction is the whole design. Taking something away from the entire field
 is an advantage dressed up as a difficulty, which is exactly what the community
 cheat-table assist patches turned out to be.

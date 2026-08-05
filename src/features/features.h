@@ -42,16 +42,15 @@ namespace Features {
     // Forces traffic density scale, max density, and vehicle limit. INI-gated, OFF by default.
     void InitTrafficControls();
 
-    // Nitrous suppression for Run For Your Life. The hook is installed once; the
-    // flag it reads is flipped live, so no code is rewritten when the mode
-    // engages or disengages.
-    void InitNosControl();
-    void SetNosDisabled(bool disabled);
-
     // Drafting and driving-assist suppression, both PLAYER ONLY. One cave keyed
     // on the game's own isHumanPlayer flag, so AI cars are never affected.
     void InitInputStateHook();
     void UpdateInputState();
+
+    // Scales the AI's per-difficulty performance multipliers while Run For Your
+    // Life is engaged. AI-side only, so it cannot affect the player's car.
+    void InitAiDifficulty();
+    void UpdateAiDifficulty();
 
     // Run For Your Life: recognises the game's Extreme difficulty and hardens it.
     // Runs from the ticker. INI-gated.
