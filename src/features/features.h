@@ -50,6 +50,8 @@ namespace Features {
     void SetVehicleAssistLevel(int level);
     // The level the [VEHICLE] toggles ask for, ignoring Run For Your Life.
     int  VehicleAssistLevelFromConfig();
+    // The level currently patched into the code.
+    int  CurrentVehicleAssistLevel();
 
     // Run For Your Life: recognises the game's Extreme difficulty and hardens it.
     // Runs from the ticker. INI-gated.

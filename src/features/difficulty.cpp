@@ -39,6 +39,7 @@ namespace {
 
     bool g_Active = false;
     bool g_LoggedGlobal = false;
+    bool g_WarnedDeferred = false;
     int  g_LastSeen = -1;
 }
 
@@ -96,8 +97,23 @@ namespace Features {
         // Only rewrite the assist patches while the player is not driving. If the
         // control hook never installed we cannot tell, so leave the code alone
         // rather than patch it at an unknown moment.
-        if (g_pHasControl == nullptr || *g_pHasControl != 0) return;
+        int wanted = g_Active ? 2 : VehicleAssistLevelFromConfig();
+        bool canPatch = (g_pHasControl != nullptr && *g_pHasControl == 0);
 
-        SetVehicleAssistLevel(g_Active ? 2 : VehicleAssistLevelFromConfig());
+        if (!canPatch) {
+            // Say so rather than skip quietly. Without this the log would list the
+            // mode as engaged while the assists were still stock, which reads as
+            // everything having applied when it has not.
+            if (wanted != CurrentVehicleAssistLevel() && !g_WarnedDeferred) {
+                Logger::Log("Run For Your Life: the assist change is waiting until you are not "
+                            "driving. Patching that code mid-race is not safe, so it lands at "
+                            "the next menu, load or cutscene.");
+                g_WarnedDeferred = true;
+            }
+            return;
+        }
+        g_WarnedDeferred = false;
+
+        SetVehicleAssistLevel(wanted);
     }
 }

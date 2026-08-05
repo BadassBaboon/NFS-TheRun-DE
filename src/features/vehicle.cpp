@@ -120,4 +120,6 @@ namespace Features {
     }
 
     int VehicleAssistLevelFromConfig() { return ConfiguredAssistLevel(); }
+
+    int CurrentVehicleAssistLevel() { return g_AssistLevel; }
 }
