@@ -340,3 +340,40 @@ next collision.
 
 The control-check site at exe+0x3F6C73 was ruled out as a route to the vehicle: its
 `esi` has fields at 0x10, 0x30 and 0xD0 only, so it is a camera or input controller.
+
+## 12. Renaming Extreme in the menus
+
+The difficulty label and its description are localised strings loaded from the loc
+bundles onto the heap, so they have no fixed address — they were found by hand at
+0xF5E56A2C and 0xF5E569A5 in one session and will be elsewhere in the next. They are
+narrow ASCII, not UTF-16: the two buffers sat 0x87 bytes apart, and an odd gap rules
+out a two-byte encoding.
+
+They are therefore located by content at runtime, with two rules that keep that from
+being reckless:
+
+- The description is found by the fragment `forewarned` rather than its full text, so
+  a difference in wording or punctuation does not make the search silently fail.
+- `EXTREME` on its own matches 28 places in memory. It is only accepted when it is
+  null-terminated on both sides, making it a whole string rather than a fragment, and
+  only within 0x2000 bytes of the description buffer already found.
+
+There is more than one copy, and every one in the window has to be rewritten. Two sit
+back to back at 0xF5E56A24 and 0xF5E56A2C, exactly the eight bytes of `EXTREME `
+apart, and the menu draws the *second*. Renaming only the first changed a string
+nothing was displaying, which looked exactly like the rename failing. That adjacency
+is also why the label has no padding to grow into: the byte after one terminator is
+the `E` of the next copy, so seven characters is the hard limit.
+
+Note that `Memory::FindAllPatternsProcess` cannot be used for this: it stops at
+0x20000000, and these buffers live above 0xF0000000 because the game is large-address
+aware. The scan in difficulty_text.cpp walks the whole user address space instead.
+
+Replacements are written into the game's own buffer, so they cannot be longer than
+what is already there. A buffer's capacity is its text plus any run of zero bytes
+after its terminator, capped at 16 — allocators commonly pad, but a long run of zeroes
+is more likely to be a different allocation than slack. Anything longer is truncated
+and the log reports the exact number of characters that fit.
+
+`EXTREME` is seven characters and the copies sit back to back with no padding, so
+seven is the hard ceiling for the replacement label. The shipped `DEADLY` is six.

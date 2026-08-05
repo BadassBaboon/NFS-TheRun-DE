@@ -16,6 +16,8 @@ set OUT=NFSTR_DefinitiveEdition.asi
     src/features/track_rules.cpp ^
     src/features/traffic.cpp ^
     src/features/player_vehicle.cpp ^
+    src/features/difficulty.cpp ^
+    src/features/difficulty_text.cpp ^
     src/features/vehicle.cpp ^
     src/features/engine_audio.cpp ^
     src/features/particle_fix.cpp ^

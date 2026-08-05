@@ -49,15 +49,8 @@ namespace {
     const int  kRejectTicksBeforeLogging = 600;
     int  g_RejectTicks = 0;
 
-    // Committed pages only; guard pages and no-access reservations would fault.
-    bool Readable(uintptr_t addr, size_t size) {
-        if (addr < 0x10000) return false;
-        MEMORY_BASIC_INFORMATION mbi;
-        if (VirtualQuery(reinterpret_cast<LPCVOID>(addr), &mbi, sizeof(mbi)) == 0) return false;
-        if (mbi.State != MEM_COMMIT) return false;
-        if (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return false;
-        uintptr_t regionEnd = reinterpret_cast<uintptr_t>(mbi.BaseAddress) + mbi.RegionSize;
-        return addr + size <= regionEnd;
+    inline bool Readable(uintptr_t addr, size_t size) {
+        return addr >= 0x10000 && Memory::IsReadable(addr, size);
     }
 
     // Returns 0 if any link in the chain is not yet populated or is not readable.
@@ -79,7 +72,11 @@ namespace {
 
 namespace Features {
     void UpdatePlayerVehicle() {
-        if (g_Config.VehicleHealth <= 0.0f) return;
+        // Run For Your Life owns the health while it is engaged, so whatever is in
+        // [VEHICLE] is deliberately ignored rather than merged.
+        const bool rfyl = Difficulty::RunForYourLifeActive();
+        const float target = rfyl ? Difficulty::kHealthCap : g_Config.VehicleHealth;
+        if (target <= 0.0f) return;
 
         uintptr_t vehicle = ResolveVehicle();
         if (!vehicle) return;
@@ -101,11 +98,27 @@ namespace Features {
         g_RejectTicks = 0;
 
         if (!g_LoggedVehicle) {
-            Logger::Log("Vehicle health: NFSVehicle at 0x%08X, m_health was %.1f, holding at %.1f.",
-                        vehicle, current, g_Config.VehicleHealth);
+            Logger::Log("Vehicle health: NFSVehicle at 0x%08X, m_health was %.1f, %s at %.1f.",
+                        vehicle, current, rfyl ? "capped" : "held", target);
             g_LoggedVehicle = true;
         }
 
-        if (current != g_Config.VehicleHealth) *health = g_Config.VehicleHealth;
+        // Two different behaviours, because the same write means opposite things
+        // depending on which side of stock the target sits.
+        //
+        // [VEHICLE] VehicleHealth is a cheat: you set it above 100 and it is held
+        // there, so damage never accumulates and the wreck screen never fires.
+        //
+        // Run For Your Life sets a value below stock, and holding it there would
+        // make the car invulnerable at 50 rather than fragile — exactly backwards.
+        // So the mode applies a ceiling instead: health is pulled down to the cap
+        // but never pushed back up, which halves the damage you can absorb while
+        // leaving damage itself working normally. It also re-applies by itself
+        // after a respawn, when the game resets health to 100.
+        if (rfyl) {
+            if (current > target) *health = target;
+        } else if (current != target) {
+            *health = target;
+        }
     }
 }

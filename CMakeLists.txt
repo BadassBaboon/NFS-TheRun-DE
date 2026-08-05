@@ -18,6 +18,8 @@ set(SOURCES
     src/features/traffic.cpp
     src/features/vehicle.cpp
     src/features/player_vehicle.cpp
+    src/features/difficulty.cpp
+    src/features/difficulty_text.cpp
     src/features/engine_audio.cpp
     src/features/particle_fix.cpp
     src/features/render_settings.cpp

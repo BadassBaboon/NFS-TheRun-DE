@@ -24,7 +24,7 @@ namespace Config {
         g_Config.FPSLimit             = GetPrivateProfileIntA("GRAPHICS_FPS", "FPSLimit",            60, iniPath);
         g_Config.UnlockCutsceneFPS    = GetPrivateProfileIntA("GRAPHICS_FPS", "UnlockCutsceneFPS",   0,  iniPath);
         g_Config.ClampSimRateWhenNoControl = GetPrivateProfileIntA("GRAPHICS_FPS", "ClampSimRateWhenNoControl", 1, iniPath);
-        g_Config.EnableExtraUIOptions = GetPrivateProfileIntA("UI_DEBUG",     "EnableExtraUIOptions", 1,  iniPath);
+        g_Config.EnableExtraUIOptions = GetPrivateProfileIntA("UI_DEBUG",     "EnableExtraUIOptions", 0,  iniPath);
 
         g_Config.DisableCheckpointTimer   = GetPrivateProfileIntA("TRACK_RULES", "DisableCheckpointTimer",   0, iniPath);
         g_Config.DisableResetOOB          = GetPrivateProfileIntA("TRACK_RULES", "DisableResetOOB",          0, iniPath);
@@ -36,6 +36,8 @@ namespace Config {
         g_Config.TrafficVehicleLimit   = GetPrivateProfileIntA("TRAFFIC", "TrafficVehicleLimit", 25, iniPath);
 
         g_Config.DisableAllVehicleAssists   = GetPrivateProfileIntA("VEHICLE", "DisableAllVehicleAssists",   0, iniPath);
+        g_Config.RunForYourLife       = GetPrivateProfileIntA("DIFFICULTY", "RunForYourLife", 1, iniPath);
+
         g_Config.DisableBasicVehicleAssists = GetPrivateProfileIntA("VEHICLE", "DisableBasicVehicleAssists", 0, iniPath);
         g_Config.VehicleHealth              = ReadIniFloat("VEHICLE", "VehicleHealth", -1.0f, iniPath);
 
@@ -76,6 +78,7 @@ namespace Config {
         Logger::Log("  DisableAllVehicleAssists=%d  DisableBasicVehicleAssists=%d",
             g_Config.DisableAllVehicleAssists, g_Config.DisableBasicVehicleAssists);
         Logger::Log("  VehicleHealth=%.1f", g_Config.VehicleHealth);
+        Logger::Log("  RunForYourLife=%d", g_Config.RunForYourLife);
         Logger::Log("  EnableRenderTweaks=%d  ForceFov=%.1f  FovDrivingOnly=%d  ForceRenderShiftEnabled=%d  ShiftX=%.3f  ShiftY=%.3f  ForceRoll=%.3f  FixMinimapRendering=%d",
             g_Config.EnableRenderTweaks, g_Config.ForceFov, g_Config.ForceFovOnlyWhileDriving, g_Config.ForceRenderShiftEnabled,
             g_Config.ForceRenderShiftX, g_Config.ForceRenderShiftY, g_Config.ForceRoll, g_Config.FixMinimapRendering);

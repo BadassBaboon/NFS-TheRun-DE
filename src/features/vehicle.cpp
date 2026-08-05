@@ -61,28 +61,63 @@ namespace {
         {"Assist: skip DriftIntents calc",   0x1428E73, {0x0F,0x84,0x27,0x05,0x00,0x00}, {0xE9,0x28,0x05,0x00,0x00,0x90}, 6},
     };
 
-    void Apply(const BytePatch* patches, size_t count) {
+    const size_t kBasicCount = sizeof(kBasicPatches) / sizeof(BytePatch);
+    const size_t kExtraCount = sizeof(kAllExtraPatches) / sizeof(BytePatch);
+
+    // VerifiedPatch is symmetric: swapping expected and replacement puts the
+    // original instruction back, with the same signature check in the other
+    // direction. Both forms are no-ops if the bytes are already what is wanted,
+    // so a redundant call cannot corrupt anything.
+    void ApplyGroup(const BytePatch* patches, size_t count, bool on) {
         for (size_t i = 0; i < count; ++i) {
             const BytePatch& p = patches[i];
-            PatchUtil::VerifiedPatch(p.name, p.offset, p.expected, p.replacement, p.size);
+            if (on) PatchUtil::VerifiedPatch(p.name, p.offset, p.expected, p.replacement, p.size);
+            else    PatchUtil::VerifiedPatch(p.name, p.offset, p.replacement, p.expected, p.size);
         }
+    }
+
+    // 0 = stock, 1 = basic set, 2 = everything. Tracked so transitions only touch
+    // the groups that actually change.
+    int g_AssistLevel = 0;
+
+    int ConfiguredAssistLevel() {
+        if (g_Config.DisableAllVehicleAssists)   return 2;
+        if (g_Config.DisableBasicVehicleAssists) return 1;
+        return 0;
     }
 }
 
 namespace Features {
-    void InitVehicleAssists() {
-        // "All" is a superset of "Basic"; if both are set, apply the full set once.
-        if (g_Config.DisableAllVehicleAssists) {
-            Logger::Log("Disabling ALL vehicle assists (%u patches).",
-                        static_cast<unsigned>((sizeof(kBasicPatches) + sizeof(kAllExtraPatches)) / sizeof(BytePatch)));
-            Apply(kBasicPatches, sizeof(kBasicPatches) / sizeof(BytePatch));
-            Apply(kAllExtraPatches, sizeof(kAllExtraPatches) / sizeof(BytePatch));
-        } else if (g_Config.DisableBasicVehicleAssists) {
-            Logger::Log("Disabling BASIC vehicle assists (%u patches).",
-                        static_cast<unsigned>(sizeof(kBasicPatches) / sizeof(BytePatch)));
-            Apply(kBasicPatches, sizeof(kBasicPatches) / sizeof(BytePatch));
-        } else {
-            Logger::Log("Vehicle assists: no changes (both toggles off).");
-        }
+    void SetVehicleAssistLevel(int level) {
+        if (level == g_AssistLevel) return;
+
+        static const char* kNames[] = { "stock", "BASIC", "ALL" };
+        Logger::Log("Vehicle assists: %s -> %s.", kNames[g_AssistLevel], kNames[level]);
+
+        // The basic group is a subset of the full set, so each group is simply
+        // driven to whether the new level needs it.
+        ApplyGroup(kBasicPatches,    kBasicCount, level >= 1);
+        ApplyGroup(kAllExtraPatches, kExtraCount, level >= 2);
+
+        g_AssistLevel = level;
     }
+
+    void InitVehicleAssists() {
+        // When Run For Your Life is enabled it owns the assists outright, and the
+        // level is chosen from the difficulty each tick instead. Leaving the code
+        // untouched here keeps the two from writing the same bytes at boot.
+        if (g_Config.RunForYourLife) {
+            Logger::Log("Vehicle assists: managed by Run For Your Life, [VEHICLE] toggles ignored.");
+            return;
+        }
+
+        int level = ConfiguredAssistLevel();
+        if (level == 0) {
+            Logger::Log("Vehicle assists: no changes (both toggles off).");
+            return;
+        }
+        SetVehicleAssistLevel(level);
+    }
+
+    int VehicleAssistLevelFromConfig() { return ConfiguredAssistLevel(); }
 }

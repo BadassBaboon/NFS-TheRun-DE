@@ -6,7 +6,7 @@
 
 namespace Memory {
     // Returns true if [address, address+size) is committed and readable.
-    static bool IsReadable(uintptr_t address, size_t size) {
+    bool IsReadable(uintptr_t address, size_t size) {
         MEMORY_BASIC_INFORMATION mbi;
         uintptr_t curr = address;
         uintptr_t end = address + size;

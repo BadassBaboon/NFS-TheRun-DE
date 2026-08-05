@@ -49,6 +49,23 @@ framerate the moment you are driving again.
 **Minimap rendering.** On some events the minimap comes up glitchy, invisible,
 or missing road segments. Clearing the render target each frame fixes it.
 
+## Run For Your Life
+
+The Run's Extreme difficulty mostly just makes the AI quicker. Pick Extreme with
+this on and the mod recognises it and hardens the rules: the difficulty is
+renamed to **DEADLY** in the menus, every driving assist is switched off, and
+your car is capped to half its usual health, so the crashes you used to walk away
+from now end the run. Damage still works normally — you just have half the buffer.
+
+A fifth difficulty is not possible from an ASI. The menu is a fixed list of four
+items in an EBX asset, `RaceAIDifficulty` has exactly four values, and the AI
+tuning data is a struct with four named blocks rather than an array, so a fifth
+value would index nothing. Recognising Extreme and changing what it means is the
+version that actually works.
+
+It has one setting, `RunForYourLife`, and no knobs. The values are fixed in the
+mod: a difficulty every player can tune to taste is not a difficulty.
+
 ## What it adds
 
 All off by default unless noted.
@@ -59,10 +76,10 @@ All off by default unless noted.
 | Shadow map resolution | The game runs 2048 at its highest preset. 4096 is visibly sharper and is what this ships with. |
 | Shadow filtering and draw distance | Filtering at 0 or 2 turns the softening off for hard-edged shadows. Both are read once when a level loads, so they apply from the next event. |
 | Anisotropic filtering | The game ships at 4 and has no menu option for it. Forced to 16 by default, which sharpens the road at shallow angles for almost no cost. The engine resets it to 4 on every level load, so the mod reapplies it. |
-| Vehicle health | Holds the car's health high so damage never reaches the wreck screen. A cheat rather than a fix, so it ships off. |
+| Vehicle health | Holds the car's health high so damage never reaches the wreck screen. A cheat rather than a fix, so it ships off. Ignored while Run For Your Life is engaged. |
 | Viewport shift and camera roll | Raises or tilts the view. Conflicts with FusionFix's camera; see the INI. |
 | Traffic density, max density and car count | |
-| Driving assists | Turns off the racing-line and drift assists that steer for you. Five patches for the basic set, thirteen for all of them. |
+| Driving assists | Turns off the racing-line and drift assists that steer for you. Five patches for the basic set, thirteen for all of them. Ignored while Run For Your Life is engaged. |
 | Checkpoint timer, out-of-bounds reset, wrong-way respawn | For free roam and experimenting. |
 | QA debug menu and photo mode | |
 

@@ -10,6 +10,10 @@ namespace Memory {
     // Base address of the main game module (accounts for ASLR/relocation).
     uintptr_t GetGameBase();
 
+    // True if `size` bytes at `address` sit on committed, readable pages. Use
+    // before walking a pointer chain, where any link may be null or stale.
+    bool IsReadable(uintptr_t address, size_t size);
+
     // Returns true if the `size` bytes at `address` exactly match `bytes`.
     // Safe against unreadable pages (returns false instead of crashing).
     bool VerifyBytes(uintptr_t address, const void* bytes, size_t size);
