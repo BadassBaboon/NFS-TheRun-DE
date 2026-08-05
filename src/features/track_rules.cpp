@@ -22,11 +22,22 @@ namespace Features {
             PatchUtil::CaptureNop("Checkpoint Timer Disable (b)", 0xFDB998, 5);
         }
 
-        if (g_Config.DisableResetOOB) {
+        // The time-of-day feature forces these two on regardless of the INI.
+        // Several presets swap map assets, and the out-of-bounds and wrong-way
+        // volumes are authored against the daytime layout, so a randomized level
+        // triggers them where nothing is actually wrong. The tool this was ported
+        // from disables both for the same reason, and lists it as a known issue.
+        const bool todNeedsThem = g_Config.RandomizeTimeOfDay != 0;
+        if (todNeedsThem) {
+            Logger::Log("Track rules: OOB reset and wrong-way respawn disabled, required by "
+                        "the time-of-day feature.");
+        }
+
+        if (g_Config.DisableResetOOB || todNeedsThem) {
             PatchUtil::CaptureNop("Reset OOB Disable", 0x3FAA8C, 3);
         }
 
-        if (g_Config.DisableWrongWayRespawn) {
+        if (g_Config.DisableWrongWayRespawn || todNeedsThem) {
             PatchUtil::CaptureNop("Wrong Way Respawn Disable", 0x408915, 6);
         }
     }

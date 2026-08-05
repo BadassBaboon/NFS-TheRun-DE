@@ -40,7 +40,8 @@
 // which keeps it clear of the x87 and SSE state the surrounding code cares about.
 
 extern "C" {
-    uint8_t   g_TodEnabled = 0;
+    // 0 off, 1 randomize within each level's legal set, 2 night everywhere.
+    uint8_t   g_TodMode = 0;
     uintptr_t g_pTodReturn = 0;
     void TodHookAsm();
     void TodRandomizeC(void* obj);
@@ -50,7 +51,7 @@ asm(
     ".text\n"
     ".globl _TodHookAsm\n"
     "_TodHookAsm:\n"
-    "    cmpb $0, _g_TodEnabled\n"
+    "    cmpb $0, _g_TodMode\n"
     "    je   1f\n"
     "    pushal\n"
     "    pushfl\n"
@@ -72,6 +73,15 @@ namespace {
 
     const intptr_t kOffPreset = 0x64;
     const intptr_t kOffGuid   = -0x04;
+
+    const uint8_t kModeRandom = 1;
+    const uint8_t kModeNight  = 2;
+
+    // Night Run, from the source table's ForceNightVisEnv arm.
+    const int32_t  kNightDefault         = 4;
+    const uint32_t kGuidSanFrancisco     = 2702358496u;  // no night preset exists
+    const uint32_t kGuidLasVegasEastA    = 2494877324u;
+    const int32_t  kNightLasVegasEastA   = 3;
 
     bool g_Installed = false;
     bool g_Logged = false;
@@ -106,11 +116,29 @@ extern "C" void TodRandomizeC(void* obj) {
     if (!Memory::IsReadable(presetAddr, sizeof(int32_t))) return;
 
     uint32_t guid = *reinterpret_cast<uint32_t*>(guidAddr);
+    int32_t* preset = reinterpret_cast<int32_t*>(presetAddr);
+
+    if (g_TodMode == kModeNight) {
+        // Night is preset 4 nearly everywhere, with two levels the source table
+        // singles out. Unlike the randomizer this is applied blind rather than
+        // from a per-level list, which is what the original does too — night is
+        // the one setting essentially every level implements.
+        if (guid == kGuidSanFrancisco) {
+            // The source fakes night here with a hand-built VisEnv, because this
+            // level has no night preset at all. That VisEnv is nine more code
+            // caves and is not ported, so writing its preset would change the
+            // lighting without producing night. Left as the developers set it.
+            return;
+        }
+        *preset = (guid == kGuidLasVegasEastA) ? kNightLasVegasEastA : kNightDefault;
+        return;
+    }
+
     const TodEntry* e = Lookup(guid);
     if (e == nullptr || e->count == 0) return;   // unknown level, leave it alone
 
     uint8_t chosen = e->presets[NextRandom() % e->count];
-    *reinterpret_cast<int32_t*>(presetAddr) = static_cast<int32_t>(chosen);
+    *preset = static_cast<int32_t>(chosen);
 }
 
 namespace Features {
@@ -119,29 +147,34 @@ namespace Features {
 
         uintptr_t addr = Memory::GetGameBase() + kSite;
         if (!Memory::VerifyBytes(addr, kExpect, sizeof(kExpect))) {
-            Logger::Log("Time-of-day randomizer: ABORTED at 0x%08X, bytes [%s] don't match.",
+            Logger::Log("Time of day: ABORTED at 0x%08X, bytes [%s] don't match.",
                         addr, Memory::BytesToHex(addr, sizeof(kExpect)).c_str());
             return;
         }
 
         g_pTodReturn = addr + sizeof(kExpect);
         if (Memory::InjectJMP(addr, reinterpret_cast<uintptr_t>(TodHookAsm), sizeof(kExpect))) {
-            Logger::Log("Time-of-day randomizer: hook installed at 0x%08X, %u levels known.",
-                        addr, static_cast<unsigned>(kTodTableCount));
+            Logger::Log("Time of day: hook installed at 0x%08X, mode %d (%s), %u levels known.",
+                        addr, g_Config.RandomizeTimeOfDay,
+                        g_Config.RandomizeTimeOfDay == kModeNight ? "night" : "randomize",
+                        static_cast<unsigned>(kTodTableCount));
             g_Installed = true;
         } else {
-            Logger::Log("Time-of-day randomizer: hook FAILED at 0x%08X.", addr);
+            Logger::Log("Time of day: hook FAILED at 0x%08X.", addr);
         }
     }
 
     void UpdateTodRandomizer() {
         if (!g_Installed) return;
 
-        uint8_t want = g_Config.RandomizeTimeOfDay ? 1 : 0;
-        g_TodEnabled = want;
+        int mode = g_Config.RandomizeTimeOfDay;
+        if (mode < 0 || mode > kModeNight) mode = 0;
+        g_TodMode = static_cast<uint8_t>(mode);
 
-        if (!g_Logged && want) {
-            Logger::Log("Time-of-day randomizer active.");
+        if (!g_Logged && mode != 0) {
+            Logger::Log("Time of day: %s.",
+                        mode == kModeRandom ? "randomizing within each level's own presets"
+                                            : "night forced on every level that has one");
             g_Logged = true;
         }
     }

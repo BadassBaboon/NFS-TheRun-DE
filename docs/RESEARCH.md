@@ -720,6 +720,37 @@ and touches no floating point, keeping it clear of the x87 and SSE state the
 surrounding code depends on. It uses its own xorshift rather than `rand()`, since
 it runs on the game's thread from inside a detour and should not share CRT state.
 
+### Night Run (mode 2)
+
+The source table's ForceNightVisEnv arm is far simpler than its randomizer: write
+preset 4 and be done, with two exceptions.
+
+    default                            preset 4
+    Las Vegas East A (2494877324)      preset 3
+    Get Outta San Francisco (2702358496)  preset 0 + a hand-built VisEnv
+
+San Francisco has no night preset at all, so the source fakes it by forcing nine
+VisEnv fields (light intensity, exposure, sky brightness, sun rotation and colour,
+headlight condition) through nine separate code caves. Those are not ported, and
+writing preset 0 without them would change the lighting without producing night,
+so this skips that level entirely rather than half-applying the effect.
+
+Modes 1 and 2 are alternatives rather than a scale, which matches the original —
+its own notes say enabling Night Run disables the randomizer and vice versa.
+
+### Out-of-bounds and wrong-way, forced off
+
+The source tool's readme lists this as a known issue and so should this: some
+presets swap map assets, and the OOB and wrong-way volumes are authored against
+the daytime layout, so a level with a changed time of day trips them where nothing
+is wrong. Both are therefore forced off whenever the time-of-day feature is on,
+regardless of what [TRACK_RULES] says.
+
+Levels that will not visibly change in either mode, inherited from the original:
+Las Vegas Rival Race, Las Vegas Alley Escape and Chicago Downtown Escape have
+overlapping lighting volumes that win, and the car-select cutscenes are not
+covered.
+
 ### Section rename
 
 `[DIFFICULTY]` became `[GAMEPLAY]`, since it now holds this alongside Run For Your
