@@ -52,6 +52,15 @@ namespace Features {
     void InitNosControl();
     void SetNosDisabled(bool disabled);
 
+    // Drafting suppression for Run For Your Life. Player only — AI cars keep
+    // their slipstream, so this is a handicap rather than an advantage.
+    void InitDraftingControl();
+    void SetDraftingDisabled(bool disabled);
+
+    // Forces the Extreme checkpoint-reset ("rewind") allowance to zero. Finds the
+    // career's RewindsPerDifficulty array by its contents. Runs from the ticker.
+    void UpdateRewinds();
+
     // Run For Your Life: recognises the game's Extreme difficulty and hardens it.
     // Runs from the ticker. INI-gated.
     void UpdateDifficulty();

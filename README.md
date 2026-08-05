@@ -53,9 +53,13 @@ or missing road segments. Clearing the render target each frame fixes it.
 
 The Run's Extreme difficulty mostly just makes the AI quicker. Pick Extreme with
 this on and the mod recognises it and hardens the rules: the difficulty is
-renamed to **DEADLY** in the menus, nitrous is disabled outright, and your car is
-capped to half its usual health, so the crashes you used to walk away from now end
-the run. Damage still works normally — you just have half the buffer.
+renamed to **DEADLY** in the menus, nitrous and drafting are disabled, the one
+checkpoint reset Extreme grants is taken away, and your car is capped to half its
+usual health. Damage still works normally — you just have half the buffer, and
+nothing to fall back on when it runs out.
+
+Drafting is removed for the player only; AI cars keep their slipstream. Removing
+it from everyone would have been an advantage dressed up as a difficulty.
 
 A fifth difficulty is not possible from an ASI. The menu is a fixed list of four
 items in an EBX asset, `RaceAIDifficulty` has exactly four values, and the AI

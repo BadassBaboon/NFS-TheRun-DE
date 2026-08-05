@@ -65,42 +65,11 @@ namespace {
         return addr + size <= regionEnd;
     }
 
-    // Scans writable committed memory for `needle`. Unlike Memory::FindAllPatterns-
-    // Process this covers the whole user address space: the game is large-address
-    // aware and these buffers turned up above 0xF0000000, far past that helper's
-    // 0x20000000 ceiling.
+    // One hit is all this needs; the shared scanner covers the whole user address
+    // space, which matters because these buffers land above 0xF0000000.
     uintptr_t ScanWritable(const char* needle, size_t len) {
-        SYSTEM_INFO si;
-        GetSystemInfo(&si);
-        uintptr_t addr    = reinterpret_cast<uintptr_t>(si.lpMinimumApplicationAddress);
-        uintptr_t maxAddr = reinterpret_cast<uintptr_t>(si.lpMaximumApplicationAddress);
-
-        MEMORY_BASIC_INFORMATION mbi;
-        while (addr < maxAddr) {
-            if (!VirtualQuery(reinterpret_cast<LPCVOID>(addr), &mbi, sizeof(mbi))) {
-                addr += 0x1000;
-                continue;
-            }
-            uintptr_t regionBase = reinterpret_cast<uintptr_t>(mbi.BaseAddress);
-            uintptr_t next = regionBase + mbi.RegionSize;
-            if (next <= addr) break; // guards against a zero-size region
-
-            bool usable = mbi.State == MEM_COMMIT
-                       && !(mbi.Protect & (PAGE_GUARD | PAGE_NOACCESS))
-                       && (mbi.Protect & (PAGE_READWRITE | PAGE_WRITECOPY |
-                                          PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY));
-            if (usable && mbi.RegionSize >= len) {
-                const char* p   = reinterpret_cast<const char*>(regionBase);
-                size_t      end = mbi.RegionSize - len;
-                for (size_t i = 0; i <= end; ++i) {
-                    if (p[i] == needle[0] && std::memcmp(p + i, needle, len) == 0) {
-                        return regionBase + i;
-                    }
-                }
-            }
-            addr = next;
-        }
-        return 0;
+        uintptr_t hit = 0;
+        return Memory::ScanWritableAll(needle, len, &hit, 1) ? hit : 0;
     }
 
     // Given an address somewhere inside a null-terminated string, finds the start

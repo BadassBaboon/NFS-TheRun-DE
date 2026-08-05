@@ -451,3 +451,74 @@ no `WidgetFunctions`, and no `UIBoolDataSourceInfo` visibility binding of the ki
 the difficulty menu items use. There is therefore no data-driven flag to flip to
 hide it; suppressing it would mean intercepting the widget where the HUD composes
 it, which is a much larger job than the nitrous suppression itself. Left alone.
+
+## 17. Drafting and rewinds, implemented
+
+### Drafting (player only)
+
+Written at the tail of `collectRaceCarInputState`:
+
+    0x0069B65C  movss [esi+2B0h], xmm0     drafting
+    0x0069B680  movss [esi+2B4h], xmm0     draftingSpeed
+    0x0069AAD3  mov   [esi+102h], al       isHumanPlayer
+
+The All American Run table writes [esi+2B0h] for its own "Drafting Disable", which
+corroborates the offset. Both fields are filled for every car, so blanking them
+outright would strip the AI's slipstream too and hand the player an advantage — the
+exact trap the driving assists fall into. The cave keys on `isHumanPlayer` instead.
+
+The hook sits on the second write (8 bytes, room for a 5-byte jump); by then both
+values exist, so the cave clears drafting and substitutes zero for the draftingSpeed
+about to be stored. It stays off the x87 stack, which has a live value pushed at
+0x0069B67A and popped at 0x0069B688, and only clobbers flags, which nothing reads
+before the function returns.
+
+### Rewinds
+
+RewindsPerDifficulty is found by its contents — four int32s of 10, 5, 3, 1. Since a
+signature can collide, every candidate is logged with the dword after it, and a
+match followed by 99 (UnlimitedRewindsValue) is treated as confirmed. A lone
+unconfirmed match is accepted; several are not, and nothing is written. Only index 3
+is touched, so it is safe to apply regardless of the difficulty selected.
+
+### Player-only assists, not implemented
+
+The same isHumanPlayer trick would work for the driving assists, which is the honest
+version of what the cheat tables were reaching for. The fields are:
+
+    [esi+0x290]  racelineAssistForceScalar   (fstp at 0x0069B48E)
+    [esi+0x294]  racelineAssistTorqueScalar  (fstp at 0x0069B4C4)
+    [esi+0x299]  alignToRoad                 (mov  at 0x0069B1A9, byte)
+
+## 18. Scanning live game memory safely
+
+The first version of the rewind search crashed the game a few seconds after the
+menu strings were renamed. Three separate problems, all worth remembering:
+
+**Reads must not fault.** The scan called `VirtualQuery`, saw `MEM_COMMIT`, then
+compared the pages directly. The game allocates and frees constantly while
+loading, so a region can be freed between the query and the comparison, and
+touching it then is an access violation. The scan now copies each region in 64 KB
+chunks through `ReadProcessMemory` on our own process, which fails cleanly on a
+region that has gone away instead of taking the game down. Verified against a
+deliberately decommitted allocation.
+
+**Chunking must overlap.** Consecutive chunks overlap by `len - 1` bytes so a
+match lying across a boundary is still found. Verified with a signature planted
+three bytes before a 64 KB boundary.
+
+**The scanner must skip its own module.** The needle being searched for is, by
+definition, also sitting in our own memory, so every search finds our copy of it.
+For the rewind array that phantom candidate would have made the count ambiguous
+on every run, and the "refuse when ambiguous" rule would then have meant the
+feature never applied. `ScanWritableAll` now skips regions whose `AllocationBase`
+is this .asi.
+
+Why the string search survived all of this and the rewind search did not: the
+string search asks for one hit and stops, and its needles are string literals in
+read-only `.rdata`, which is never scanned. The rewind search asks for up to
+sixteen, so it always walked the entire address space.
+
+The rewind search now looks for the twenty-byte `10, 5, 3, 1, 99` first and only
+falls back to the sixteen-byte array, and gives up after 24 passes rather than
+rescanning forever.

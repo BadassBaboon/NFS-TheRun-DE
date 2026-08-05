@@ -87,9 +87,9 @@ namespace Features {
         bool shouldBeActive = (difficulty == kDifficultyExpert);
         if (shouldBeActive != g_Active) {
             Logger::Log(shouldBeActive
-                        ? "RUN FOR YOUR LIFE engaged: health capped at %.0f, nitrous disabled, "
-                          "[VEHICLE] VehicleHealth ignored."
-                        : "Run For Your Life disengaged: nitrous restored, [VEHICLE] applies again.",
+                        ? "RUN FOR YOUR LIFE engaged: health capped at %.0f, "
+                          "nitrous and drafting disabled, [VEHICLE] VehicleHealth ignored."
+                        : "Run For Your Life disengaged: nitrous and drafting restored, [VEHICLE] applies again.",
                         Difficulty::kHealthCap);
             g_Active = shouldBeActive;
         }
@@ -97,5 +97,6 @@ namespace Features {
         // Nitrous is a flag the per-frame hook reads, not a code patch, so it can
         // be switched at any moment including mid-race.
         SetNosDisabled(g_Active);
+        SetDraftingDisabled(g_Active);
     }
 }
