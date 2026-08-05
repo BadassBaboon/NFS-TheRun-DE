@@ -14,7 +14,7 @@ struct ConfigStruct {
     int ClampSimRateWhenNoControl = 1;
 
     // [UI_DEBUG]
-    int EnableExtraUIOptions = 1;
+    int EnableExtraUIOptions = 0;
 
     // [TRACK_RULES] — all OFF by default; opt-in gameplay changes
     int DisableCheckpointTimer = 0;

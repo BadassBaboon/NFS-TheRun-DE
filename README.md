@@ -64,14 +64,14 @@ All off by default unless noted.
 | Traffic density, max density and car count | |
 | Driving assists | Turns off the racing-line and drift assists that steer for you. Five patches for the basic set, thirteen for all of them. |
 | Checkpoint timer, out-of-bounds reset, wrong-way respawn | For free roam and experimenting. |
-| QA debug menu and photo mode | On by default. |
+| QA debug menu and photo mode | |
 
 ## Install
 
 1. Install an ASI loader if you do not have one. FusionFix ships with one.
 2. Copy `NFSTR_DefinitiveEdition.asi` and `NFSTR_DefinitiveEdition.ini` into the
    game's `plugins` folder, next to the other ASI files.
-3. Set `FPSLimit` in the INI. It defaults to 60.
+3. Set `FPSLimit` in the INI to match your monitor. It ships at 144.
 
 Every setting is documented in the INI itself, including what each one costs.
 

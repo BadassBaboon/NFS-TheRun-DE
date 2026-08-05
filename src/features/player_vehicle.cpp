@@ -41,6 +41,14 @@ namespace {
     bool g_LoggedVehicle = false;
     bool g_LoggedReject  = false;
 
+    // The chain resolves to a stale object for a few seconds while a level loads,
+    // long before the player's car exists. That is expected and the range check
+    // handles it, so a rejection is only worth reporting once it has persisted:
+    // by then it is a real failure rather than a load in progress. The ticker runs
+    // every 16ms, so this is roughly ten seconds.
+    const int  kRejectTicksBeforeLogging = 600;
+    int  g_RejectTicks = 0;
+
     // Committed pages only; guard pages and no-access reservations would fault.
     bool Readable(uintptr_t addr, size_t size) {
         if (addr < 0x10000) return false;
@@ -80,13 +88,17 @@ namespace Features {
         float current = *health;
 
         if (!(current > kHealthMin && current < kHealthMax)) {
-            if (!g_LoggedReject) {
-                Logger::Log("Vehicle health: chain resolved to 0x%08X but m_health reads %f, "
-                            "which is not a health value. Not writing.", vehicle, current);
+            if (++g_RejectTicks >= kRejectTicksBeforeLogging && !g_LoggedReject) {
+                Logger::Log("Vehicle health: the pointer chain has resolved to 0x%08X for %d "
+                            "seconds but m_health reads %f, which is not a health value. "
+                            "Nothing is being written. The chain is wrong on this build.",
+                            vehicle, kRejectTicksBeforeLogging / 60, current);
                 g_LoggedReject = true;
             }
             return;
         }
+
+        g_RejectTicks = 0;
 
         if (!g_LoggedVehicle) {
             Logger::Log("Vehicle health: NFSVehicle at 0x%08X, m_health was %.1f, holding at %.1f.",
