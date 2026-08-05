@@ -627,3 +627,45 @@ The skill default matches the value mRally2's table forces as an outright cheat,
 which is a reasonable sanity check that the site does what it appears to. Glue
 turned out to be "higher keeps the pack on you" rather than the reverse, which was
 the open question when the hooks went in.
+
+## 24. Nitrous tuning, and the flags window at 0x0069B5BD
+
+Nitrous suppression was withdrawn in section 22 for breaking events. Tuning it
+achieves the intent without that risk, and the game makes it easy by splitting
+player and AI itself:
+
+    0x0069B5BD  cmp   byte [esp+13h], 0     the isHumanPlayer test
+    0x0069B5D6  fld   dword [edi+1330h]
+    0x0069B5DC  fstp  dword [esi+2A8h]      nosStrengthScalar, EVERY car
+    0x0069B5E2  jz    <AI branch>
+    0x0069B601  fld   dword [edi+132Ch]     PLAYER branch
+    0x0069B607  fstp  dword [esi+2A4h]      nosRechargeScalar, from car tuning
+    0x0069B60F  movss xmm0, [023DE148h]     AI branch: the constant 1.0
+    0x0069B617  movss [esi+2A4h], xmm0      nosRechargeScalar = 1.0 for AI
+
+The AI's recharge rate being a hardcoded constant is what makes "give the AI more
+nitrous" a two-instruction change: substitute our own float for the 1.0 and leave
+the store alone.
+
+Field offsets in RaceCar::InputState, decoded from the bytes:
+
+    [esi+0x29C]  nosRechargeOverride
+    [esi+0x2A0]  nosRechargeBonus
+    [esi+0x2A4]  nosRechargeScalar
+    [esi+0x2A8]  nosStrengthScalar
+
+`nosStrengthScalar` is stored for every car at 0x0069B5DC, so it is scaled inside
+the player hook at 0x0069B601 instead of at its own site — that address is only
+reached when the driver is human.
+
+### The flags window
+
+Worth recording because it constrains anything added here later. The `cmp` at
+0x0069B5BD sets the flags that the `jz` at 0x0069B5E2 consumes **thirty-seven
+bytes later**. That is only safe because every instruction in between is x87, and
+x87 does not write EFLAGS. A cave placed anywhere in that span must preserve flags
+or the human/AI branch breaks. Both hooks here sit past the `jz`, so they are
+clear of it.
+
+Both caves use x87 with matched fld/fstp pairs, so the FPU stack is balanced and
+no flags are touched either way.

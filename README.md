@@ -64,10 +64,12 @@ is a fair question; everything else about the mode is fixed.
 
 Both removals are player-only — the AI keeps its drafting and its assists.
 
-Nitrous is deliberately left alone. It was disabled at one point and that was a
-mistake: the game is designed around it, and several timed and chase events are
-close to unwinnable without it. A difficulty that makes events impossible is not a
-harder game.
+Nitrous is tuned rather than removed. It was disabled outright at one point and
+that was a mistake: the game is designed around it, and several timed and chase
+events are close to unwinnable without it. Instead the AI's recharge rate is
+raised — the game hardcodes it to 1.0 for every AI car — and your own refill rate
+and boost strength can be scaled down, so nitrous becomes something you ration
+rather than something you lose.
 That distinction is the whole design. Taking something away from the entire field
 is an advantage dressed up as a difficulty, which is exactly what the community
 cheat-table assist patches turned out to be.

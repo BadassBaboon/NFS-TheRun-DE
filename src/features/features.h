@@ -52,6 +52,11 @@ namespace Features {
     void InitAiDifficulty();
     void UpdateAiDifficulty();
 
+    // Nitrous tuning: scarcer and weaker for the player, more plentiful for the
+    // AI. Each branch of the game's own player/AI split gets its own hook.
+    void InitNosTuning();
+    void UpdateNosTuning();
+
     // Run For Your Life: recognises the game's Extreme difficulty and hardens it.
     // Runs from the ticker. INI-gated.
     void UpdateDifficulty();

@@ -36,6 +36,7 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
     Features::InitParticleFix();
     Features::InitInputStateHook();
     Features::InitAiDifficulty();
+    Features::InitNosTuning();
     Features::InitGinsuDiagnostics();
     Features::InitFramerateUnlocker();
 
@@ -48,6 +49,7 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
         Features::UpdateDifficulty();     // decides whether the mode is engaged
         Features::UpdateInputState();     // reads that decision, so it runs after
         Features::UpdateAiDifficulty();
+        Features::UpdateNosTuning();
         Features::UpdateDifficultyText();
         Features::UpdatePlayerVehicle();  // reads that decision, so it runs after
         Features::UpdateRenderSettings();
