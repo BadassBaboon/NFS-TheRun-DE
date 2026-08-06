@@ -24,6 +24,7 @@ struct ConfigStruct {
     // are known, the same way KickupVelocityScale was settled.
     float DeadlyPlayerNosRechargeScale = 1.0f;  // <1 refills slower
     float DeadlyPlayerNosStrengthScale = 1.0f;  // <1 weaker boost
+    float DeadlyPlayerNosBoostScale     = 1.0f;  // risky-action awards, not the trickle
     float DeadlyAiNosRechargeScale     = 2.0f;  // the game hardcodes 1.0 for AI
     float DeadlyAiSkillScale = 5.0f;
     float DeadlyAiGlueScale  = 2.0f;
@@ -90,6 +91,7 @@ struct ConfigStruct {
     int AnisotropicFiltering = -1;
 
     // [DIAGNOSTICS] Log Ginsu render state ~1x/sec per voice. Troubleshooting only.
+    int LogNosAwards = 0;
     int LogGinsuDiagnostics = 0;
     int LogSettingsContainers = 0;   // dump settings-container addresses once
 };

@@ -48,6 +48,11 @@
 // stack is balanced, and no flags are touched either way.
 
 extern "C" {
+    float     g_PlayerNosBoost = 1.0f;
+    float     g_LastNosAward = 0.0f;   // diagnostic peek, written every frame
+    uintptr_t g_pNosBoostReturn = 0;
+    void PlayerNosBoostHookAsm();
+
     float     g_PlayerNosRecharge = 1.0f;
     float     g_PlayerNosStrength = 1.0f;
     float     g_AiNosRecharge     = 1.0f;
@@ -70,6 +75,27 @@ asm(
     "    jmpl *_g_pPlayerNosReturn\n"
 );
 
+// The instant award, 0x0069AB40. CollectPowerTrainDynamicState does
+//
+//     remainingNOSCapacity += requestNosBoostAmount * NOSstageCapacity
+//
+// so this tops the bar up directly and does NOT pass through nosRechargeScalar.
+// It is the one path where a reward can be paid without the passive trickle rate
+// being involved, which is what lets the two be tuned against each other.
+//
+// The game accumulates pending awards on the vehicle at +0xA78, hands the total
+// over here, and clears it on the next instruction.
+asm(
+    ".text\n"
+    ".globl _PlayerNosBoostHookAsm\n"
+    "_PlayerNosBoostHookAsm:\n"
+    "    flds  0xA78(%edi)\n"                 // the pending award
+    "    fmuls _g_PlayerNosBoost\n"
+    "    fsts  _g_LastNosAward\n"             // peek for the log, without popping
+    "    fstps 0x60(%esi)\n"                  // the instruction pair this replaced
+    "    jmpl *_g_pNosBoostReturn\n"
+);
+
 asm(
     ".text\n"
     ".globl _AiNosHookAsm\n"
@@ -79,6 +105,10 @@ asm(
 );
 
 namespace {
+    const uintptr_t kSiteBoost  = 0x69AB40 - 0x400000;
+    // fld dword [edi+0A78h] ; fstp dword [esi+60h]
+    const uint8_t kExpectBoost[9] = { 0xD9,0x87,0x78,0x0A,0x00,0x00, 0xD9,0x5E,0x60 };
+
     const uintptr_t kSitePlayer = 0x69B601 - 0x400000;
     const uintptr_t kSiteAi     = 0x69B60F - 0x400000;
 
@@ -91,6 +121,7 @@ namespace {
     bool g_Installed = false;
     bool g_Logged = false;
     float g_LastRecharge = -1.0f, g_LastStrength = -1.0f, g_LastAi = -1.0f;
+    float g_LastReportedAward = -1.0f;
 
     void InstallSite(const char* name, uintptr_t off, const uint8_t* expect, size_t size,
                      void* cave, uintptr_t* pReturn) {
@@ -117,6 +148,8 @@ namespace Features {
                     reinterpret_cast<void*>(PlayerNosHookAsm), &g_pPlayerNosReturn);
         InstallSite("ai",     kSiteAi,     kExpectAi,     sizeof(kExpectAi),
                     reinterpret_cast<void*>(AiNosHookAsm),     &g_pAiNosReturn);
+        InstallSite("boost",  kSiteBoost,  kExpectBoost,  sizeof(kExpectBoost),
+                    reinterpret_cast<void*>(PlayerNosBoostHookAsm), &g_pNosBoostReturn);
     }
 
     void UpdateNosTuning() {
@@ -128,10 +161,25 @@ namespace Features {
         float recharge = rfyl ? g_Config.DeadlyPlayerNosRechargeScale : 1.0f;
         float strength = rfyl ? g_Config.DeadlyPlayerNosStrengthScale : 1.0f;
         float ai       = rfyl ? g_Config.DeadlyAiNosRechargeScale     : 1.0f;
+        float boost    = rfyl ? g_Config.DeadlyPlayerNosBoostScale    : 1.0f;
 
         g_PlayerNosRecharge = recharge;
         g_PlayerNosStrength = strength;
         g_AiNosRecharge     = ai;
+        g_PlayerNosBoost    = boost;
+
+        // Reports the award the moment one is actually paid. This is how to tell
+        // whether a near miss, an oncoming pass or a draft tops the bar up through
+        // this path or through the passive recharge rate, which decides whether
+        // DeadlyPlayerNosBoostScale can do what it is meant to.
+        if (g_Config.LogNosAwards) {
+            float award = g_LastNosAward;
+            if (award > 0.0f && award != g_LastReportedAward) {
+                Logger::Log("NOS award: %.4f of a full bar (before scaling, x%.2f applied).",
+                            award / (boost > 0.0f ? boost : 1.0f), boost);
+                g_LastReportedAward = award;
+            }
+        }
 
         if ((recharge != g_LastRecharge || strength != g_LastStrength || ai != g_LastAi)
             && (g_Logged || rfyl)) {
