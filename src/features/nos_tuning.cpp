@@ -29,10 +29,29 @@
 // car. Two hooks, one per branch, and neither needs an isHumanPlayer check of its
 // own because the game has already branched on it.
 //
-// PLAYER HOOK, 0x0069B601, twelve bytes. Scales the recharge scalar as it is
-// stored, then scales the strength value that was already stored at 0x0069B5DC.
-// Doing the second one here rather than at its own site is deliberate: 0x0069B5DC
-// runs for every car, while this point is reached only by the player.
+// PLAYER HOOK, 0x0069B601, twelve bytes. Scales three things:
+//
+//   nosRechargeScalar  the passive trickle, as it is stored here
+//   nosStrengthScalar  stored earlier at 0x0069B5DC, for EVERY car -- scaling it
+//                      here instead of at its own site is what makes it player-only
+//   nosRechargeBonus   the reward for risky driving, stored just above at
+//                      0x0069B5FB when one is earned
+//
+// The bonus is safe to scale here because this address is the join point of the
+// branch that computes it: the jz at 0x0069B5EB jumps to exactly 0x0069B601, so
+// this runs whether or not a reward was paid, and scaling a zero is still zero.
+//
+// WHAT THE BONUS IS. Found by watching the fields live rather than by reading the
+// code: with the diagnostic on, nosRechargeBonus pulses to 3.0 and back to 0 in
+// bursts that line up with near misses. requestNosBoostAmount, the obvious
+// candidate, never fired at all -- that path only carries scripted grants.
+//
+// The recharge appears to be (base + bonus) * scalar rather than
+// base * scalar + bonus, because dropping the scalar to 0 killed the reward NOS
+// as well as the passive fill. That is why raising the bonus is the way to keep
+// rewards intact while the trickle is turned down: at scalar 0.1, a bonus scale
+// of 10 restores roughly the stock payout for a near miss while passive
+// accumulation stays at a tenth.
 //
 // AI HOOK, 0x0069B60F, eight bytes. Substitutes our own constant for the 1.0 the
 // game loads. The store that follows is left alone and writes whatever we put in
@@ -50,11 +69,15 @@
 extern "C" {
     float     g_PlayerNosBoost = 1.0f;
     float     g_LastNosAward = 0.0f;   // diagnostic peek, written every frame
+    // The player's RaceCar::InputState, captured for the field watch below. Only
+    // ever written from the player branch, so it is never an AI car's.
+    uintptr_t g_pPlayerInputState = 0;
     uintptr_t g_pNosBoostReturn = 0;
     void PlayerNosBoostHookAsm();
 
     float     g_PlayerNosRecharge = 1.0f;
     float     g_PlayerNosStrength = 1.0f;
+    float     g_PlayerNosBonus    = 1.0f;
     float     g_AiNosRecharge     = 1.0f;
     uintptr_t g_pPlayerNosReturn = 0;
     uintptr_t g_pAiNosReturn     = 0;
@@ -66,12 +89,16 @@ asm(
     ".text\n"
     ".globl _PlayerNosHookAsm\n"
     "_PlayerNosHookAsm:\n"
+    "    movl  %esi, _g_pPlayerInputState\n"   // for the diagnostic; player's state only
     "    flds  0x132C(%edi)\n"                 // the car's own recharge scalar
     "    fmuls _g_PlayerNosRecharge\n"
     "    fstps 0x2A4(%esi)\n"                  // the instruction pair this replaced
     "    flds  0x2A8(%esi)\n"                  // strength, stored earlier for all cars
     "    fmuls _g_PlayerNosStrength\n"
     "    fstps 0x2A8(%esi)\n"                  // scaled here, so player only
+    "    flds  0x2A0(%esi)\n"                  // the risky-driving reward
+    "    fmuls _g_PlayerNosBonus\n"
+    "    fstps 0x2A0(%esi)\n"
     "    jmpl *_g_pPlayerNosReturn\n"
 );
 
@@ -123,6 +150,48 @@ namespace {
     float g_LastRecharge = -1.0f, g_LastStrength = -1.0f, g_LastAi = -1.0f;
     float g_LastReportedAward = -1.0f;
 
+    // Watches the four recharge inputs on the player's own input state.
+    //
+    // The award path turned out not to carry the risky-driving rewards: with
+    // LogNosAwards on, a run full of near misses produced no award lines at all,
+    // so requestNosBoostAmount is only used for scripted grants. The rewards must
+    // therefore reach the bar through one of these instead, and this reports which
+    // one moves when a near miss, an oncoming pass or a draft is scored.
+    //
+    // The values are read from the ticker rather than the detour, so the pointer
+    // is range-checked every time: it is only as valid as the object behind it.
+    const uintptr_t kOffRechargeOverride = 0x29C;
+    const uintptr_t kOffRechargeBonus    = 0x2A0;
+    const uintptr_t kOffRechargeScalar   = 0x2A4;
+    const uintptr_t kOffStrengthScalar   = 0x2A8;
+
+    float g_WatchLast[4] = { -1.0f, -1.0f, -1.0f, -1.0f };
+
+    void WatchRechargeFields() {
+        uintptr_t s = g_pPlayerInputState;
+        if (s < 0x10000) return;
+        if (!Memory::IsReadable(s + kOffRechargeOverride, 4 * sizeof(float))) return;
+
+        const uintptr_t offs[4] = { kOffRechargeOverride, kOffRechargeBonus,
+                                    kOffRechargeScalar, kOffStrengthScalar };
+        static const char* kNames[4] = { "override", "bonus", "scalar", "strength" };
+
+        float now[4];
+        bool changed = false;
+        for (int i = 0; i < 4; ++i) {
+            now[i] = *reinterpret_cast<float*>(s + offs[i]);
+            // Only a real move counts; these carry float noise frame to frame.
+            if (now[i] < g_WatchLast[i] - 0.0005f || now[i] > g_WatchLast[i] + 0.0005f) {
+                changed = true;
+            }
+        }
+        if (!changed) return;
+
+        Logger::Log("NOS fields: %s=%.4f  %s=%.4f  %s=%.4f  %s=%.4f",
+                    kNames[0], now[0], kNames[1], now[1], kNames[2], now[2], kNames[3], now[3]);
+        for (int i = 0; i < 4; ++i) g_WatchLast[i] = now[i];
+    }
+
     void InstallSite(const char* name, uintptr_t off, const uint8_t* expect, size_t size,
                      void* cave, uintptr_t* pReturn) {
         uintptr_t addr = Memory::GetGameBase() + off;
@@ -162,11 +231,13 @@ namespace Features {
         float strength = rfyl ? g_Config.DeadlyPlayerNosStrengthScale : 1.0f;
         float ai       = rfyl ? g_Config.DeadlyAiNosRechargeScale     : 1.0f;
         float boost    = rfyl ? g_Config.DeadlyPlayerNosBoostScale    : 1.0f;
+        float bonus    = rfyl ? g_Config.DeadlyPlayerNosBonusScale    : 1.0f;
 
         g_PlayerNosRecharge = recharge;
         g_PlayerNosStrength = strength;
         g_AiNosRecharge     = ai;
         g_PlayerNosBoost    = boost;
+        g_PlayerNosBonus    = bonus;
 
         // Reports the award the moment one is actually paid. This is how to tell
         // whether a near miss, an oncoming pass or a draft tops the bar up through
@@ -179,12 +250,13 @@ namespace Features {
                             award / (boost > 0.0f ? boost : 1.0f), boost);
                 g_LastReportedAward = award;
             }
+            WatchRechargeFields();
         }
 
         if ((recharge != g_LastRecharge || strength != g_LastStrength || ai != g_LastAi)
             && (g_Logged || rfyl)) {
-            Logger::Log("NOS tuning: player recharge x%.2f, player strength x%.2f, AI recharge %.2f.",
-                        recharge, strength, ai);
+            Logger::Log("NOS tuning: player recharge x%.2f, bonus x%.2f, strength x%.2f, "
+                        "AI recharge %.2f.", recharge, bonus, strength, ai);
             g_Logged = true;
         }
         g_LastRecharge = recharge;

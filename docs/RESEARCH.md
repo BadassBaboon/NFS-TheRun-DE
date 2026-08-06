@@ -797,3 +797,49 @@ is. If a field has a known range, check it before trusting a read.
   now file-local, leaving `RunForYourLifeActive()` as the module's public surface.
 - `build.bat` did not pass `-Wall -Wextra`, so warnings were never being seen. It
   does now, and the tree is clean under them.
+
+## 27. Where the risky-driving nitrous reward actually lives
+
+Two wrong guesses and one live measurement.
+
+The obvious candidate was `requestNosBoostAmount`, since
+`CollectPowerTrainDynamicState` adds it straight to the bar:
+
+    remainingNOSCapacity += requestNosBoostAmount * NOSstageCapacity
+
+It is hooked at 0x0069AB40 and works, but a full run of near misses produced no
+awards at all. That path carries scripted grants only — the same shape as the
+`PlayerActionEntityData.NosBoostAmount = 1` seen in the EBX.
+
+The answer came from watching the four recharge inputs on the player's own
+InputState each tick instead of reading more code:
+
+    NOS fields: override=0.0000  bonus=3.0000  scalar=1.0000  strength=1.0000
+    NOS fields: override=0.0000  bonus=0.0000  scalar=1.0000  strength=1.0000
+
+`nosRechargeBonus` at [esi+0x2A0] pulses to 3.0 and back to 0, in bursts matching
+near misses. `nosRechargeOverride` is unused, staying at 0 throughout.
+
+### Scaling it
+
+The bonus is stored at 0x0069B5FB, inside the `if` that computes it. No new hook
+was needed: the `jz` at 0x0069B5EB jumps to exactly 0x0069B601, which is already
+the player hook's address, so that hook is the join point of the branch. It runs
+whether or not a reward was paid, and scaling a zero is still zero.
+
+### The formula
+
+Dropping `nosRechargeScalar` to 0 killed reward nitrous as well as the passive
+fill, which means the recharge is `(base + bonus) * scalar` rather than
+`base * scalar + bonus`. Turning the scalar down therefore starves the rewards
+too, and the way to get "low trickle, full reward" is to raise the bonus to
+compensate: scalar 0.1 with bonus 10 leaves passive accumulation at a tenth while
+a near miss pays roughly what it always did.
+
+### Confirmed in play
+
+`DeadlyPlayerNosRechargeScale = 0.1` with `DeadlyPlayerNosBonusScale = 10.0` gives
+the intended result: the bar barely moves on its own and fills quickly on risky
+driving. The field watch shows the multiply landing linearly with no clamp
+downstream — `bonus` reads 30.0 where the game pays 3.0. Both are now the shipped
+defaults.

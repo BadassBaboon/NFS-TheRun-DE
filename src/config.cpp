@@ -37,8 +37,9 @@ namespace Config {
 
         g_Config.RandomizeTimeOfDay   = GetPrivateProfileIntA("GAMEPLAY", "RandomizeTimeOfDay", 0, iniPath);
         g_Config.RunForYourLife       = GetPrivateProfileIntA("GAMEPLAY", "RunForYourLife", 1, iniPath);
-        g_Config.DeadlyPlayerNosRechargeScale = ReadIniFloat("GAMEPLAY", "DeadlyPlayerNosRechargeScale", 1.0f, iniPath);
+        g_Config.DeadlyPlayerNosRechargeScale = ReadIniFloat("GAMEPLAY", "DeadlyPlayerNosRechargeScale", 0.1f, iniPath);
         g_Config.DeadlyPlayerNosStrengthScale = ReadIniFloat("GAMEPLAY", "DeadlyPlayerNosStrengthScale", 1.0f, iniPath);
+        g_Config.DeadlyPlayerNosBonusScale    = ReadIniFloat("GAMEPLAY", "DeadlyPlayerNosBonusScale",    10.0f, iniPath);
         g_Config.DeadlyPlayerNosBoostScale    = ReadIniFloat("GAMEPLAY", "DeadlyPlayerNosBoostScale",    1.0f, iniPath);
         g_Config.DeadlyAiNosRechargeScale     = ReadIniFloat("GAMEPLAY", "DeadlyAiNosRechargeScale",     2.0f, iniPath);
         g_Config.DeadlyAiSkillScale   = ReadIniFloat("GAMEPLAY", "DeadlyAiSkillScale", 5.0f, iniPath);
@@ -87,9 +88,10 @@ namespace Config {
         Logger::Log("  RandomizeTimeOfDay=%d", g_Config.RandomizeTimeOfDay);
         Logger::Log("  RunForYourLife=%d  DeadlyAiSkillScale=%.2f  DeadlyAiGlueScale=%.2f",
             g_Config.RunForYourLife, g_Config.DeadlyAiSkillScale, g_Config.DeadlyAiGlueScale);
-        Logger::Log("  NOS: PlayerRecharge=%.2f  PlayerStrength=%.2f  PlayerBoost=%.2f  AiRecharge=%.2f",
-            g_Config.DeadlyPlayerNosRechargeScale, g_Config.DeadlyPlayerNosStrengthScale,
-            g_Config.DeadlyPlayerNosBoostScale, g_Config.DeadlyAiNosRechargeScale);
+        Logger::Log("  NOS: PlayerRecharge=%.2f  PlayerBonus=%.2f  PlayerStrength=%.2f  PlayerBoost=%.2f  AiRecharge=%.2f",
+            g_Config.DeadlyPlayerNosRechargeScale, g_Config.DeadlyPlayerNosBonusScale,
+            g_Config.DeadlyPlayerNosStrengthScale, g_Config.DeadlyPlayerNosBoostScale,
+            g_Config.DeadlyAiNosRechargeScale);
         Logger::Log("  EnableRenderTweaks=%d  ForceFov=%.1f  FovDrivingOnly=%d  ForceRenderShiftEnabled=%d  ShiftX=%.3f  ShiftY=%.3f  ForceRoll=%.3f  FixMinimapRendering=%d",
             g_Config.EnableRenderTweaks, g_Config.ForceFov, g_Config.ForceFovOnlyWhileDriving, g_Config.ForceRenderShiftEnabled,
             g_Config.ForceRenderShiftX, g_Config.ForceRenderShiftY, g_Config.ForceRoll, g_Config.FixMinimapRendering);
