@@ -5,109 +5,117 @@
 # NFS The Run Definitive Edition
 
 An ASI plugin for **Need for Speed: The Run** (PC, v1.1.0.0) that unlocks the
-framerate and repairs the things that unlocking it breaks.
+framerate, repairs what unlocking it breaks, and adds a difficulty worth the name.
 
-The Run shipped locked to 30 FPS. The usual way to unlock it raises the physics
-simulation rate along with the framerate, and Frostbite 2 does not take that
-well: the engine note stops following the RPM, tyre spray flies off sideways,
-and the quick-time button prompts expire before you can react. This mod unlocks
-the framerate and fixes each of those separately, so the game still behaves the
-way it was tuned to at 30.
+The Run ships locked to 30 FPS. Raising the cap the usual way raises the physics
+simulation rate with it, and Frostbite 2 does not survive that: the engine note
+stops following the RPM, tyre spray flies off sideways, and quick-time prompts
+expire before you can press anything. This mod unlocks the framerate and fixes
+each of those separately, so the game still behaves the way it was tuned at 30.
 
-It also exposes engine settings the game never put in its menus, including field
-of view and shadow map resolution.
-
-Runs alongside [ThirteenAG's FusionFix](https://github.com/ThirteenAG/WidescreenFixesPack),
-which handles intro skipping, windowed mode and unlocks. This mod deliberately
-does not duplicate any of that.
+It runs alongside [ThirteenAG's FusionFix](https://github.com/ThirteenAG/WidescreenFixesPack)
+and duplicates none of it. Both hook the same vehicle-control check; this one
+detects the existing hook, reads its jump target, and calls into it so both run.
 
 ---
 
 ## What it fixes
 
 **Engine audio above 30 FPS.** The synth glides from the old pitch to a new one
-over roughly 33 ms and restarts that glide every time the requested pitch
-changes. A glide that has just restarted has not moved yet, so past 30 FPS the
-pitch changes arrive faster than the glide can travel and the pitch never leaves
-the 1000 Hz it starts at. Logging the synth confirmed it: at 144 FPS the
-requested pitch tracked the RPM perfectly while the actual pitch sat frozen.
-The fix stops the glide re-arming, so pitch follows RPM directly.
+over roughly 33 ms, and re-arms that glide every time the requested pitch changes.
+A glide that just restarted has not moved yet, so past 30 FPS the changes arrive
+faster than the glide can travel and the pitch never leaves the 1000 Hz it starts
+at. Logging the synth showed it directly: at 144 FPS the requested pitch tracked
+the RPM while the actual pitch sat frozen. The fix stops the glide re-arming.
 
 **Tyre spray, drift smoke and dirt dust.** These effects have each particle
-inherit part of the wheel's velocity. Above 30 FPS that inherited velocity comes
-out far too large, so the spray spawns in the right place and then streaks away
-sideways or straight up. It repeats at the same point on a track because the
-direction comes from the wheel's motion and the ground there. The fix scales the
-inherited velocity back down and touches nothing else.
+inherit part of the wheel's velocity. Above 30 FPS the inherited velocity comes
+out too large, so spray spawns in the right place and then streaks sideways or
+straight up. It repeats at the same corner every lap because the direction comes
+from the wheel's motion and the ground there. The fix scales the inherited
+velocity by 30/fps and touches nothing else.
 
-**Quick-time event prompts.** The QTE countdown assumes a 30 FPS frame time, so
-at 144 FPS the prompts expire almost five times too quickly. The mod drops the
-simulation back to 30 whenever you do not have control of the car, which is
-exactly when QTEs and scripted cutscenes play, and restores your target
-framerate the moment you are driving again.
+**Quick-time prompts.** The countdown assumes a 30 FPS frame time, so at 144 the
+prompts expire almost five times too quickly. The mod drops the simulation to 30
+whenever you have no control of the car, which is exactly when QTEs and cutscenes
+play, and restores your target framerate the moment you are driving.
 
-**Minimap rendering.** On some events the minimap comes up glitchy, invisible,
-or missing road segments. Clearing the render target each frame fixes it.
+**Minimap rendering.** On some events it comes up glitchy, invisible, or missing
+road segments. Clearing the render target each frame fixes it.
 
 ## Run For Your Life
 
-The Run's Extreme difficulty mostly just makes the AI quicker. Pick Extreme with
-this on and the mod recognises it and hardens the rules: the difficulty is
-renamed to **DEADLY** in the menus, drafting and the driving assists are stripped
-from your car, and your car is capped to half its usual health. Damage still works
-normally — you just have half the buffer.
+Extreme difficulty in The Run mostly means quicker AI. Pick Extreme with this on
+and the mod recognises it and changes the rules: the difficulty is renamed to
+**DEADLY** in the menus, your car is capped to half its health, nitrous stops
+filling on its own, drafting and the driving assists are stripped from your car,
+and the AI is scaled up.
 
-The AI is also scaled up rather than only the player being weakened, through the
-per-difficulty skill and rubber-banding multipliers the game already applies to
-it. Those two are adjustable in the INI, since how much challenge a player wants
-is a fair question; everything else about the mode is fixed.
+Every one of those removals is **player-only**. AI cars keep their drafting,
+their assists, and get twice the nitrous recharge. That distinction is the whole
+design, and it is not decorative: the community cheat-table assist patches turned
+out to degrade AI cars more than the player's, so switching them on made races
+easier. Anything this mode takes away, it takes from you alone.
 
-Both removals are player-only — the AI keeps its drafting and its assists.
+**Nitrous is earned, not removed.** An earlier version disabled it outright and
+that was a mistake, because several timed and chase events are close to
+unwinnable without it. Instead the passive refill runs at a tenth of stock while
+the reward for a near miss, an oncoming pass or a draft pays what it always did.
+The bar stops filling while you drive carefully and fills fast when you take
+risks. That split works because the game keeps the reward in a separate value
+from the refill rate, which the field diagnostic in `docs/RESEARCH.md` pinned down
+by watching it pulse to 3.0 on every near miss.
 
-Nitrous is tuned rather than removed. It was disabled outright at one point and
-that was a mistake: the game is designed around it, and several timed and chase
-events are close to unwinnable without it. Instead the AI's recharge rate is
-raised — the game hardcodes it to 1.0 for every AI car — and your own refill rate
-and boost strength can be scaled down, so nitrous becomes something you ration
-rather than something you lose.
-That distinction is the whole design. Taking something away from the entire field
-is an advantage dressed up as a difficulty, which is exactly what the community
-cheat-table assist patches turned out to be.
+A fifth difficulty is not possible from an ASI, which is worth stating plainly
+since it was the first thing tried. The menu is a fixed list of four items in an
+EBX asset, `RaceAIDifficulty` has exactly four values, and the AI tuning data is a
+struct with four named blocks rather than an array, so a fifth value indexes
+nothing. Recognising Extreme and changing what it means is the version that works.
 
-A fifth difficulty is not possible from an ASI. The menu is a fixed list of four
-items in an EBX asset, `RaceAIDifficulty` has exactly four values, and the AI
-tuning data is a struct with four named blocks rather than an array, so a fifth
-value would index nothing. Recognising Extreme and changing what it means is the
-version that actually works.
+## Time of day
 
-It has one setting, `RunForYourLife`, and no knobs. The values are fixed in the
-mod: a difficulty every player can tune to taste is not a difficulty.
+Every event is authored at one fixed time of day, so the twentieth run down a
+stretch of road looks like the first. `RandomizeTimeOfDay` changes that:
 
-## What it adds
+- `1` picks a different time each time a level loads
+- `2` is Night Run, night everywhere it exists
 
-All off by default unless noted.
+Levels do not all implement every time of day, and asking for one that was never
+built gives a broken or black scene. Mode 1 therefore carries a per-level table of
+128 events converted from _mRally2's TOD Randomizer, and any level not in it is
+left as the developers set it. Mode 2 skips San Francisco Escape, which has no
+night preset at all.
+
+Turning either on also disables the out-of-bounds reset and the wrong-way
+respawn. Some presets swap map assets while those volumes are authored against
+the daytime layout, so they fire where nothing is wrong. The tool this was ported
+from does the same and lists it as a known issue.
+
+## Everything else
 
 | Setting | Notes |
 |---|---|
-| Field of view | The game runs 48, which is why the chase camera sits on the bumper. Defaults to 60, and only while driving so the garage is untouched. |
-| Shadow map resolution | The game runs 2048 at its highest preset. 4096 is visibly sharper and is what this ships with. |
-| Shadow filtering and draw distance | Filtering at 0 or 2 turns the softening off for hard-edged shadows. Both are read once when a level loads, so they apply from the next event. |
-| Anisotropic filtering | The game ships at 4 and has no menu option for it. Forced to 16 by default, which sharpens the road at shallow angles for almost no cost. The engine resets it to 4 on every level load, so the mod reapplies it. |
-| Vehicle health | Holds the car's health high so damage never reaches the wreck screen. A cheat rather than a fix, so it ships off. Ignored while Run For Your Life is engaged. |
-| Viewport shift and camera roll | Raises or tilts the view. Conflicts with FusionFix's camera; see the INI. |
+| Field of view | The game runs 48, which is why the chase camera sits on the bumper. Ships at 60, and only while driving so the garage is untouched. |
+| Shadow map resolution | 2048 at the game's highest preset. Ships at 4096. |
+| Shadow filtering and draw distance | Filtering at 0 or 2 turns the softening off. Both are read when a level loads, so they apply from the next event. |
+| Anisotropic filtering | The game ships at 4 with no menu option. Forced to 16. The engine resets it to 4 on every level load, so the mod reapplies it. |
+| Driving assists | Strips the racing-line and road-alignment assists from your car only, keyed on the game's own human-player flag. Replaces thirteen cheat-table byte patches that made races easier. |
+| Vehicle health | Holds health high so damage never reaches the wreck screen. A cheat, so it ships off, and Run For Your Life ignores it. |
 | Traffic density, max density and car count | |
-| Driving assists | Strips the racing-line and road-alignment assists from your car only, keyed on the game's own human-player flag. Replaces thirteen cheat-table byte patches that degraded the AI more than the player and made races easier. |
+| Viewport shift and camera roll | Conflicts with FusionFix's camera; see the INI. |
 | Checkpoint timer, out-of-bounds reset, wrong-way respawn | For free roam and experimenting. |
 | QA debug menu and photo mode | |
+
+Everything above ships off unless the text says otherwise. Every setting is
+documented in the INI itself, including what it costs and what it was measured
+against.
 
 ## Install
 
 1. Install an ASI loader if you do not have one. FusionFix ships with one.
 2. Copy `NFSTR_DefinitiveEdition.asi` and `NFSTR_DefinitiveEdition.ini` into the
-   game's `plugins` folder, next to the other ASI files.
-3. Set `FPSLimit` in the INI to match your monitor. It ships at 144.
-
-Every setting is documented in the INI itself, including what each one costs.
+   game's `plugins` folder.
+3. Set `FPSLimit` to match your monitor. It ships at 144.
 
 ## Build
 
@@ -124,48 +132,65 @@ cmake -B build -A Win32
 cmake --build build --config Release
 ```
 
-The output is `NFSTR_DefinitiveEdition.asi`. There is no dependency beyond the
-Win32 API; the hooks are hand-written x86 assembly.
+Output is `NFSTR_DefinitiveEdition.asi`. Nothing is needed beyond the Win32 API;
+the hooks are hand-written x86 assembly.
 
 ## How the patches work
 
 Every patch checks the bytes it is about to overwrite against a known signature
-first, and logs and skips if they do not match. A wrong address produces a line
-in the log instead of a crash. Addresses are resolved relative to the module
-base, so ASLR and relocation do not break them.
+first, and logs and skips on a mismatch. A wrong address produces a line in the
+log instead of a crash. Addresses resolve relative to the module base, so ASLR
+does not break them.
 
-The mod also chains onto FusionFix rather than fighting it. Both hook the same
-vehicle-control check; this one detects the existing hook, reads its jump target
-and calls into it, so both run.
+Code caves reproduce the instructions they replaced byte for byte, and each one
+is checked against the disassembled output rather than trusted from source. Two
+constraints came up often enough to be worth recording: one hook site sits inside
+a 37-byte window where a comparison's flags must survive to a later jump, and
+another straddles a live x87 value, so those caves stay off the FPU and off the
+flags register entirely.
 
 Turn on `DebugLog` and read `NFSTR_DefinitiveEdition.log` if something looks
 wrong. It records every patch, every address, and the bytes that were there.
 
 ## Known limitations
 
-Several engine settings exist but do nothing in the retail build, so they are not
+Several engine settings exist and do nothing in the retail build, so they are not
 offered: `ViewDistance`, `DrawFps` and `ForceBlurAmount` in the render settings,
 and motion blur, MSAA and the shadow cascade slice count in the world render
-settings. All were wired up, tested and removed rather than shipped as options
-that quietly fail.
+settings. Each was wired up, tested, and removed rather than shipped as an option
+that quietly fails.
 
-The redline crackle is quieter than it is at 30 FPS. Diagnostics showed a fourth
-engine-sound voice that renders at 3 calls per second against 315 for the other
-three, so it is being starved rather than mistuned. Not yet chased down.
+The redline crackle is quieter than at 30 FPS. Diagnostics found a fourth
+engine-sound voice rendering at 3 calls per second against 315 for the other
+three, so it is starved rather than mistuned. Not yet chased down.
+
+Zeroing the Extreme checkpoint-reset allowance works, but the HUD still shows a
+reset count and the reset button does nothing, because the counter it reads is a
+separate value that has not been located. The code is in `research/rewinds.cpp`
+rather than the build.
+
+Las Vegas Rival Race, Las Vegas Alley Escape and Chicago Downtown Escape do not
+change time of day. Overlapping lighting volumes override the setting, which the
+original TOD tool documents too.
 
 ## Documentation
 
 `docs/RESEARCH.md` is the reverse engineering log: verified addresses, struct
-layouts, the Frostbite settings system and how to reach it, what each fix
-actually does, and the things that were tried and did not work.
+layouts, the Frostbite settings system and how to reach it, what each fix does,
+and the things that were tried and did not work. That last part is most of its
+value. Two features shipped before anyone noticed they were writing to a field
+the AI reads too, so a difficulty setting was quietly handing the player an
+advantage in both cases. The assists were caught by play-testing, nitrous by
+asking whether AI cars could still use it.
 
-`docs/SETTINGS_FIELDS.md` lists field names, offsets and types for sixteen
+`docs/SETTINGS_FIELDS.md` lists field names, offsets and types for twenty
 Frostbite settings classes, extracted from the game's own reflection data rather
-than guessed. `docs/dump_fields.py` is the extractor, and it works on any class
-in the binary.
+than guessed. `docs/dump_fields.py` is the extractor and works on any class in
+the binary.
 
-`research/` holds code that is not in the build: crash workarounds from the
-community Cheat Engine tables that turned out to scatter race AI, and an
+`research/` holds code that is not in the build: the checkpoint-reset work above,
+nitrous suppression from before it was replaced by the recharge economy, crash
+workarounds from the community tables that turned out to scatter race AI, and an
 unfinished unreleased-events feature.
 
 ## Credits
@@ -174,13 +199,14 @@ Brawltendo, for the IDA database and for the
 [NFS Rivals framerate unlocker](https://github.com/Brawltendo/NFS-Rivals-Framerate-Unlocker),
 which showed how the same class of bug was solved in a later Frostbite game.
 
-_mRally2, for The Run Master Table and the research behind it. The traffic,
-assist and camera addresses came from that work.
+_mRally2, for The Run Master Table and the TOD Randomizer. The traffic, assist,
+nitrous and time-of-day addresses came from that work, along with the per-level
+time-of-day table.
 
 ThirteenAG, for FusionFix and the ASI loader.
 
 ## Compatibility
 
 Built and tested against Need for Speed: The Run v1.1.0.0 on Windows. The
-signature checks mean other versions will refuse to patch rather than corrupt
+signature checks mean other versions refuse to patch rather than corrupt
 themselves, but nothing else is tested.
