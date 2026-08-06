@@ -6,7 +6,7 @@
 
 static HMODULE g_hModule = NULL;
 
-DWORD WINAPI MainThread(LPVOID lpParam) {
+DWORD WINAPI MainThread(LPVOID /*lpParam*/) {
     // Determine path of the DLL to locate the INI file alongside it
     char dllPath[MAX_PATH];
     GetModuleFileNameA(g_hModule, dllPath, MAX_PATH);
@@ -62,7 +62,7 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
     return 0;
 }
 
-BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
+BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID /*lpvReserved*/) {
     switch (fdwReason) {
     case DLL_PROCESS_ATTACH:
         g_hModule = hinstDLL;

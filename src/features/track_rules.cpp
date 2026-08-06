@@ -2,6 +2,7 @@
 #include "patch_util.h"
 #include "../config.h"
 #include "../logger.h"
+#include <cstdint>
 
 namespace Features {
     // Track-rule relaxations for free-roam / experimentation / speedrun sync.
@@ -14,8 +15,10 @@ namespace Features {
     //   Reset OOB:         007FAA8C -> 0x3FAA8C (NOP 3)   fld [ecx+0x68]
     //   Wrong-way respawn: exe+408915 -> 0x408915 (NOP 6) fld [esi+0x2924]
     //
-    // No byte signatures are locked in yet: these fire in normal races, so the
-    // first run logs the originals via CaptureNop for promotion to VerifiedNop.
+    // The OOB and wrong-way signatures were captured from a live run and are now
+    // verified before the NOP goes in, so a different build refuses instead of
+    // corrupting code. The two checkpoint-timer sites have not been observed yet
+    // and still use CaptureNop, which logs the original bytes for promotion.
     void InitTrackRules() {
         if (g_Config.DisableCheckpointTimer) {
             PatchUtil::CaptureNop("Checkpoint Timer Disable (a)", 0x4FBF06, 8);
@@ -34,11 +37,15 @@ namespace Features {
         }
 
         if (g_Config.DisableResetOOB || todNeedsThem) {
-            PatchUtil::CaptureNop("Reset OOB Disable", 0x3FAA8C, 3);
+            // fld dword ptr [ecx+0x68]
+            static const uint8_t kOob[3] = { 0xD9, 0x41, 0x68 };
+            PatchUtil::VerifiedNop("Reset OOB Disable", 0x3FAA8C, kOob, sizeof(kOob));
         }
 
         if (g_Config.DisableWrongWayRespawn || todNeedsThem) {
-            PatchUtil::CaptureNop("Wrong Way Respawn Disable", 0x408915, 6);
+            // fld dword ptr [esi+0x2924]
+            static const uint8_t kWrongWay[6] = { 0xD9, 0x86, 0x24, 0x29, 0x00, 0x00 };
+            PatchUtil::VerifiedNop("Wrong Way Respawn Disable", 0x408915, kWrongWay, sizeof(kWrongWay));
         }
     }
 }

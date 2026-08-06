@@ -45,9 +45,11 @@ namespace {
 // Captured by the control-check hook in fps_unlocker.cpp.
 extern "C" uint8_t* g_pHasControl;
 
-namespace Difficulty {
-    // Returns the RaceAIDifficulty enum, or -1 before the game has set it.
-    int GetCurrent() {
+namespace {
+    // The RaceAIDifficulty enum: 0 Easy, 1 Normal, 2 Hard, 3 Expert ("Extreme").
+    // Returns -1 until the game has set it. File-local: everything outside this
+    // file wants Difficulty::RunForYourLifeActive() rather than the raw value.
+    int CurrentDifficulty() {
         uintptr_t slot = Memory::GetGameBase() + kDifficultyGlobal;
         if (!Memory::IsReadable(slot, sizeof(uintptr_t))) return -1;
 
@@ -61,7 +63,9 @@ namespace Difficulty {
         if (value < 0 || value > kDifficultyExpert) return -1;
         return value;
     }
+}
 
+namespace Difficulty {
     bool RunForYourLifeActive() { return g_Active; }
 }
 
@@ -69,7 +73,7 @@ namespace Features {
     void UpdateDifficulty() {
         if (!g_Config.RunForYourLife) return;
 
-        int difficulty = Difficulty::GetCurrent();
+        int difficulty = CurrentDifficulty();
         if (difficulty < 0) return;
 
         if (!g_LoggedGlobal) {

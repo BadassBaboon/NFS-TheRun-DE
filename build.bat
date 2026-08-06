@@ -4,7 +4,7 @@ echo Building NFS The Run Definitive Edition (.asi) with MinGW...
 set GXX=C:\MinGW\bin\g++.exe
 set OUT=NFSTR_DefinitiveEdition.asi
 
-%GXX% -shared -O2 -std=c++17 -m32 ^
+%GXX% -shared -O2 -std=c++17 -m32 -Wall -Wextra ^
     src/main.cpp ^
     src/logger.cpp ^
     src/config.cpp ^

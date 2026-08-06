@@ -64,6 +64,7 @@ asm(
 static bool g_LogCapturedHook = false;
 static bool g_LogCapturedControl = false;
 static int  g_LastControlState = -1;   // -1 unknown, 0 no control, 1 has control
+static bool g_WarnedStaleControl = false;
 static float g_LastLoggedFps = 0.0f;
 static uint32_t g_LastLoggedTickEnable = 999;
 
@@ -79,6 +80,11 @@ static const DWORD kControlHookDelayMs = 5000;
 
 // Sim rate the game's QTE/particle/audio timers were hardcoded around.
 static const float kBaseSimRate = 30.0f;
+
+// Validated view of the control flag for other features to gate on: -1 unknown,
+// 0 no control, 1 driving. Deliberately not the raw pointer — see the stale-read
+// handling in UpdateFramerateUnlocker.
+extern "C" int PlayerControlState() { return g_LastControlState; }
 
 namespace Features {
     void InitFramerateUnlocker() {
@@ -177,24 +183,46 @@ namespace Features {
 
         // Sim-rate clamp: when the player has no vehicle control (QTE / cutscene),
         // pull the sim rate back to 30 so hardcoded-30fps timers behave correctly.
-        if (g_Config.ClampSimRateWhenNoControl && g_pHasControl) {
+        // The control state is read whether or not the clamp is enabled, because
+        // the render settings gate the FOV override on it too.
+        if (g_pHasControl) {
             uint8_t ctlByte = *g_pHasControl;
-            int hasControl = (ctlByte != 0) ? 1 : 0;   // assumed polarity: nonzero = has control
 
             if (!g_LogCapturedControl) {
                 Logger::Log("Control-check hook active: PlayerHasVehicleControl byte at 0x%08X (initial value %u)",
                             reinterpret_cast<uintptr_t>(g_pHasControl), ctlByte);
                 g_LogCapturedControl = true;
             }
-            if (hasControl != g_LastControlState) {
-                Logger::Log("Vehicle control changed: PlayerHasVehicleControl=%u -> %s sim rate",
-                            ctlByte, hasControl ? "restoring target" : "clamping to 30");
-                g_LastControlState = hasControl;
-            }
 
-            if (!hasControl) {
-                targetFps = kBaseSimRate;
+            // The byte is a bool, so anything other than 0 or 1 means the pointer
+            // has gone stale: it aims into an object that has since been freed and
+            // its memory handed to something else. Treating a stale read as truth
+            // is worse than ignoring it — a garbage nonzero byte reads as "driving"
+            // and would release the sim-rate clamp in the middle of a cutscene,
+            // which is exactly what the clamp exists to prevent. The last known
+            // good state is held until the hook fires again and re-captures.
+            if (ctlByte > 1) {
+                if (!g_WarnedStaleControl) {
+                    Logger::Log("Vehicle control: byte at 0x%08X read %u, which is not a bool. "
+                                "The object it points at was freed and reused. Holding the last "
+                                "known state until the hook re-captures.",
+                                reinterpret_cast<uintptr_t>(g_pHasControl), ctlByte);
+                    g_WarnedStaleControl = true;
+                }
+            } else {
+                int hasControl = (ctlByte != 0) ? 1 : 0;
+                if (hasControl != g_LastControlState) {
+                    Logger::Log("Vehicle control changed: PlayerHasVehicleControl=%u -> %s sim rate",
+                                ctlByte, hasControl ? "restoring target" : "clamping to 30");
+                    g_LastControlState = hasControl;
+                }
+                g_WarnedStaleControl = false;
             }
+        }
+
+        // Unknown state (-1) leaves the target framerate alone rather than guessing.
+        if (g_Config.ClampSimRateWhenNoControl && g_LastControlState == 0) {
+            targetFps = kBaseSimRate;
         }
 
         if (targetFps > 0.0f && *pMaxVariableFps != targetFps) {

@@ -17,9 +17,9 @@ namespace Memory {
     // Scans every committed, writable region of the whole user address space for
     // `needle`, writing up to `maxOut` hits into `out` and returning the count.
     //
-    // FindAllPatternsProcess stops at 0x20000000 and cannot be used for heap data:
-    // the game is large-address aware and its EBX and localisation buffers land
-    // above 0xF0000000.
+    // Covers the whole address space deliberately: the game is large-address aware
+    // and its EBX and localisation buffers land above 0xF0000000, so a scan capped
+    // at 0x20000000 would never reach them.
     size_t ScanWritableAll(const void* needle, size_t len, uintptr_t* out, size_t maxOut);
 
     // Returns true if the `size` bytes at `address` exactly match `bytes`.
@@ -35,9 +35,6 @@ namespace Memory {
     bool InjectJMP(uintptr_t src, uintptr_t dest, size_t size = 5);
     uintptr_t FindPattern(uintptr_t start, size_t size, const char* pattern, const char* mask);
     uintptr_t FindPatternModule(HMODULE module, const char* pattern, const char* mask);
-    uintptr_t FindPatternProcess(const char* pattern, const char* mask);
-    uintptr_t FindPatternRange(uintptr_t minAddr, uintptr_t maxAddr, const char* pattern, const char* mask);
-    size_t FindAllPatternsProcess(const char* pattern, const char* mask, uintptr_t* outAddresses, size_t maxCount);
 }
 
 #endif // MEMORY_H

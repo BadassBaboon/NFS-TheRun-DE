@@ -15,9 +15,6 @@ namespace Difficulty {
     const char* const kNewLabel = "DEADLY";
     const char* const kNewDescription = "Run for your life, one mistake and you're dead";
 
-    // RaceAIDifficulty enum: 0 Easy, 1 Normal, 2 Hard, 3 Expert ("Extreme").
-    // Returns -1 until the game has set it.
-    int  GetCurrent();
     // True while the player is on Extreme and the mode is enabled. When this is
     // true the mode owns vehicle health and assists, and [VEHICLE] is ignored.
     bool RunForYourLifeActive();

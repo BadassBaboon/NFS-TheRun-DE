@@ -27,9 +27,11 @@
 //   0x77 bool  InitialClearEnable
 //   0x8B bool  ForceRenderShiftEnabled  (gates ForceRenderShiftX/Y)
 
-// Captured by the control-check hook in fps_unlocker.cpp. Non-null once that hook
-// is installed; nonzero while the player has control of the car.
-extern "C" uint8_t* g_pHasControl;
+// Validated control state, maintained by fps_unlocker.cpp: -1 unknown, 0 no
+// control, 1 driving. Read this rather than the raw byte the hook captures — that
+// pointer goes stale when the object behind it is freed, and a garbage read there
+// would apply the driving FOV in the menus.
+extern "C" int PlayerControlState();
 
 namespace {
     const uintptr_t kSettingsPtrOffset = 0x2353F28; // -> [0x02753F28]
@@ -175,8 +177,9 @@ namespace Features {
         // hook was never installed we cannot tell, so the override just stays on.
         if (g_Config.ForceFov > 0.0f) {
             bool applyFov = true;
-            if (g_Config.ForceFovOnlyWhileDriving && g_pHasControl != nullptr) {
-                applyFov = (*g_pHasControl != 0);
+            if (g_Config.ForceFovOnlyWhileDriving) {
+                int state = PlayerControlState();
+                if (state >= 0) applyFov = (state != 0);   // unknown: leave it on
             }
             WriteFloat(settings, kOffForceFov, applyFov ? g_Config.ForceFov : kFovDisabled);
         }

@@ -755,3 +755,45 @@ covered.
 
 `[DIFFICULTY]` became `[GAMEPLAY]`, since it now holds this alongside Run For Your
 Life and the randomizer is not tied to any difficulty.
+
+## 26. Audit: the stale control pointer
+
+A log line reading
+
+    Vehicle control changed: PlayerHasVehicleControl=176 -> restoring target sim rate
+
+exposed a real bug that had been present since the control hook was written. The
+hook captures `&[esi+4]` and that pointer is never revalidated, so once the object
+behind it is freed and its memory reused, the byte reads as whatever landed there.
+
+The consequence was not cosmetic. The test was `(*g_pHasControl != 0)`, so a
+garbage nonzero byte reads as "the player is driving" and releases the sim-rate
+clamp — in the middle of a cutscene, which is precisely what the clamp exists to
+prevent. The FOV override gated on the same byte and would have applied the
+driving FOV in menus.
+
+The byte is a bool, so anything above 1 is proof the pointer is stale. It is now
+treated as such: the last known good state is held until the hook fires again and
+re-captures, and the condition warns once rather than silently acting. Consumers
+read a validated accessor, `PlayerControlState()` (-1 unknown, 0, 1), instead of
+dereferencing the raw pointer.
+
+The general lesson, and the third time a variant of it has come up in this
+project: a captured pointer into a game object is only valid while that object
+is. If a field has a known range, check it before trusting a read.
+
+### Other audit results
+
+- Removed `Memory::FindPatternProcess`, `FindPatternRange` and
+  `FindAllPatternsProcess`. All three were unreachable — the first two had no
+  callers and the third was only reached through them.
+- `PatchUtil::VerifiedNop` had no callers either. Rather than delete it, the two
+  track-rule patches whose signatures were captured from a live run
+  (`D9 41 68` for the OOB reset, `D9 86 24 29 00 00` for wrong-way) were promoted
+  from `CaptureNop` to `VerifiedNop`, so they now refuse on a mismatched build
+  instead of NOPing whatever is there. The checkpoint-timer sites have not been
+  observed yet and still use `CaptureNop`.
+- `Difficulty::GetCurrent` was exported but used only inside its own file; it is
+  now file-local, leaving `RunForYourLifeActive()` as the module's public surface.
+- `build.bat` did not pass `-Wall -Wextra`, so warnings were never being seen. It
+  does now, and the tree is clean under them.
