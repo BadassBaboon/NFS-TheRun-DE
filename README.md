@@ -116,13 +116,18 @@ from does the same and lists it as a known issue.
 | Traffic density, max density and car count | |
 | Viewport shift and camera roll | Conflicts with FusionFix's camera; see the INI. |
 | Checkpoint timer, out-of-bounds reset, wrong-way respawn | For free roam and experimenting. |
-| QA debug menu and photo mode | |
+| Photo mode | Missing from the pause menu because its visibility was tied to Autolog, which EA shut down. Restored on its own, without the debug entries. **On by default.** Saving still wants an Autolog sign-in, so use an external screenshot key. |
+| QA debug menu | Unhides every hidden UI entry, photo mode included. Broader than the row above and only worth it if you want the debug menus. |
 
 Everything above ships off unless the text says otherwise. Every setting is
 documented in the INI itself, including what it costs and what it was measured
 against.
 
 ## Install
+
+Download it from **[NFSMods](https://nfsmods.xyz/mod/5373)**. This repository holds
+the source; the built `.asi` is not committed to it, so cloning will not give you
+one. Build it yourself with the instructions below if you would rather.
 
 1. Install an ASI loader if you do not have one. FusionFix ships with one.
 2. Copy `NFSTR_DefinitiveEdition.asi` and `NFSTR_DefinitiveEdition.ini` into the
