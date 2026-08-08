@@ -84,11 +84,23 @@ namespace Features {
         float* health = reinterpret_cast<float*>(vehicle + kOffHealth);
         float current = *health;
 
+        // Exactly zero is a real reading, not a bad pointer: a wrecked car sits at
+        // zero, and so does one between events before the next is initialised.
+        // There is nothing to do with it either way, so skip quietly rather than
+        // reporting a chain that is working perfectly well.
+        if (current == 0.0f) {
+            g_RejectTicks = 0;
+            return;
+        }
+
+        // Anything else outside the plausible range means the chain has landed on
+        // something that is not a vehicle. NaN fails this too, since a comparison
+        // against NaN is always false.
         if (!(current > kHealthMin && current < kHealthMax)) {
             if (++g_RejectTicks >= kRejectTicksBeforeLogging && !g_LoggedReject) {
                 Logger::Log("Vehicle health: the pointer chain has resolved to 0x%08X for %d "
-                            "seconds but m_health reads %f, which is not a health value. "
-                            "Nothing is being written. The chain is wrong on this build.",
+                            "seconds but m_health reads %f, which is not a plausible health "
+                            "value. Nothing is being written.",
                             vehicle, kRejectTicksBeforeLogging / 60, current);
                 g_LoggedReject = true;
             }

@@ -843,3 +843,301 @@ the intended result: the bar barely moves on its own and fills quickly on risky
 driving. The field watch shows the multiply landing linearly with no clamp
 downstream — `bonus` reads 30.0 where the game pays 3.0. Both are now the shipped
 defaults.
+
+## 28. The takedown cinematic, and why the camera is not the real target
+
+When the player wrecks a cop or mob car the game plays a slow-motion cinematic and
+drives the player's car during it, badly, which often ends the run on the corner
+that follows. The data explains both halves at once.
+
+`_c4/cameras/Core_Drive/crashes/coptakeout_treatment_prefab.xml` contains:
+
+    AIControlSetterEntityData      Enabled = True
+    CinebotStateLogicEntityData    Mode = CopTakeOut_ShotA_mode
+    CinebotStateLogicEntityData    Mode = CopTakeOut_ShotA_bumper_mode
+    CinebotStateLogicEntityData    Mode = CopTakeOut_ShotA_hood_mode
+
+The autodrive is not a side effect of the camera. `AIControlSetterEntityData`
+hands the car to the AI, and it sits in the same prefab as the three camera modes,
+one per view (chase, bumper, hood). Suppressing the camera alone would leave the
+car driving itself with no visual cue that it is happening, which is worse than
+the current behaviour rather than better.
+
+### The camera side, if it is ever wanted
+
+`sub_11540A0` is the CinebotStateLogicEntity event handler and is what mRally2's
+"Camera Type" script hooks at exe+0xD5416A:
+
+    result = *(a2 + 4)                     the event id
+    193438506  -> sub_1178840              pop the mode
+    210993314  -> push: mode  = *(data + 0x10)
+                        blend = *(data + 0x14)
+
+So `[eax+0x10]` at that site is a pointer to the CinebotModeData being pushed, and
+blocking specific modes means identifying that instance. EBX GUIDs are not what the
+runtime compares: the TOD randomizer's level ids are 32-bit name hashes, so the
+mode object is likely keyed the same way. Finding the right value means logging the
+pointer during an actual takedown rather than deriving it from the asset GUID.
+
+### Other levers seen while looking
+
+`exe+0x11359`, `movss xmm0,[eax+38]`, is the global world-speed scalar; mRally2's
+"World Speed" script forces 0.1 there. It would remove the slow motion and nothing
+else, since it is global rather than takedown-specific.
+
+## 29. Backlog
+
+Open items, in the order they would be worth picking up. Each one has the work
+already done recorded above, so none of them start from nothing.
+
+**Takedown autodrive** (section 28). The camera is a red herring; the target is
+`AIControlSetterEntityData`. Next step is one diagnostic run: the player-branch
+hook at 0x0069B601 already captures the InputState, so logging `isAIControlled`,
+`requestMatchSpeed`, `inputGas` and `inputSteering` during a takedown says whether
+the car is handed to the AI or fed scripted input. The fix follows from which.
+
+**Rewind HUD counter** (sections 15, 26). Zeroing `RewindsPerDifficulty[3]` works
+but the HUD reads a separate counter that has not been located.
+`UIRewindDataBinding` in `_c4/UI/Flow/Screen/LoadScreens/RewindLoop.xml` binds the
+displayed value to `NFSUIRaceInfoComp` with DataKey 0x43b317e6, which is the
+thread to pull. Code is in `research/rewinds.cpp`.
+
+**Redline crackle.** Quieter above 30 FPS. Ginsu diagnostics found a fourth voice
+rendering at 3 calls per second against 315 for the other three, so it is starved
+rather than mistuned. Not chased down.
+
+**Nitrous HUD widget** (section 16). `_c4/UI/Assets/WidgetHudNitrous` is a bare
+`UIWidgetAsset` with no visibility binding, so hiding it means intercepting the
+HUD where it composes the widget.
+
+**AI base skill ranges.** `AIPerformanceDifficultySettingsData` holds SkillRange
+and GlueRange per difficulty. The mode already scales the multipliers applied to
+these, so touching the base ranges is a second knob on the same thing, and it
+needs the EBX-instance hunt that the rewind array failed at.
+
+**Chase camera position and pitch.** `CinebotCamera::commitShot` was identified as
+the place to look and never followed up. `ForceRenderShiftY` covers part of the
+same ground from the render settings side.
+
+**GlobalPostProcessSettings.** Resolvable through `getContainer`, never tested.
+
+## 30. Photo mode in the pause menu
+
+Photo mode is hidden because its visibility binding depends on Autolog, which EA
+shut down. `EnableExtraUIOptions` brought it back by flipping one branch so that
+no menu item is ever hidden, which drags the QA debug entries along with it.
+
+`menu_pause.xml` gives each `UILabelTreeMenuItem` three bindings in order:
+IsLocked, IsEnabled, Visibility. The visibility DataKeys separate the entries:
+
+    ID_MENU_PHOTOMODE   0x3FF1B819   InvertValue False
+    ID_MENU_DEBUG       0xE4EE8972   InvertValue True
+
+`sub_968EF0` is the menu-item builder and opens with the visibility test:
+
+    0x00968F43  mov ecx, [esi+3Ch]        the DataKey
+    0x00968F49  call edx                  resolve it
+    0x00968F4B  cmp dword [esp+38h], 2    did the resolve succeed
+    0x00968F50  jne  +29h                 not resolved -> item stays visible
+    0x00968F52  cmp [esi+40h], bl         InvertValue
+    ...                                   -> early return, item hidden
+
+esi is the item data for the whole block, so the key is still readable at
+0x00968F4B, and that instruction is five bytes. The cave compares the key and for
+photo mode only clears ZF so the following jne takes the branch the game already
+uses for an unresolved binding. Every other item runs the original compare.
+
+ZF is cleared with `test %esi, %esi` rather than a compare against a constant:
+esi is the item data and cannot be null here, and a test needs no scratch
+register, so nothing is clobbered. esp is untouched, so the replayed
+`cmp dword [esp+38h], 2` still addresses the same slot.
+
+The patch sits five bytes below the byte EnableExtraUIOptions writes, so the two
+do not overlap and can both be enabled.
+
+### Saving is not solved
+
+The in-game save still expects an Autolog sign-in. Writing the shot to disk would
+mean capturing the backbuffer, which needs a D3D11 present hook, a staging
+texture, a CPU readback and an image encoder. This mod has no rendering hooks at
+all, so that is a new subsystem rather than an addition, and every overlay the
+player is likely to already have does it better. Not attempted.
+
+## 31. Hiding the HUD for screenshots
+
+Photo mode draws a row of control hints along the bottom, and any external capture
+takes them with the shot. The widget offers no way out: `Widget_photo_mode` is a
+bare `UIWidgetAsset` with no WidgetEvents, no WidgetFunctions and no visibility
+binding, the same shape as `WidgetHudNitrous` in section 16.
+
+The game's own HUD visibility byte is reachable through the chain mRally2's table
+exposes as "In-Game HUD", with 1/0 hotkeys:
+
+    [[exe+0x248B55C] + 0xC] + 0x5B8
+
+`HudToggleKey` binds a key to flip it, defaulting to F11. The chain is re-resolved
+on every press rather than cached, because the UI objects behind it are rebuilt
+between screens and a pointer captured on one is not valid on the next. That is
+the same failure mode that produced the garbage `176` read from the cached
+vehicle-control pointer in section 26.
+
+### Tested and withdrawn
+
+It does not do the job, and it is not inert. In photo mode the flag turns the
+RACING HUD on rather than turning the hint row off, which is the opposite of what
+was wanted. Worse, the log showed every flip paired with a vehicle-control
+transition:
+
+    HUD toggle: hidden.   ->  PlayerHasVehicleControl=1
+    HUD toggle: shown.    ->  PlayerHasVehicleControl=0
+    HUD toggle: hidden.   ->  PlayerHasVehicleControl=1
+
+Perfectly anti-correlated across a dozen presses. Writing that byte disturbs state
+the vehicle-control check reads, which drags the sim-rate clamp with it, so this
+is not something to leave in behind a default-off switch. Moved to
+research/hud_toggle.cpp.
+
+The next thing to try is the "UI Objects Hook" the same table uses at
+exe+0x1089270. It captures a UI object pointer in edi and reads a float at -0xC4
+which the table calls the "UI Switch", so it looks like per-widget visibility or
+alpha rather than a global flag. Identifying the photo mode widget among the
+objects passing through that hook is the work.
+
+## 32. There is no global UI-disable switch
+
+Five routes to hiding the UI were tried. All are dead, and the negative is worth
+recording so nobody repeats them.
+
+**Per-widget visibility.** `Widget_photo_mode` is a bare `UIWidgetAsset` with no
+WidgetEvents, no WidgetFunctions and no visibility binding. `WidgetHudNitrous` in
+section 16 is identical. Frostbite widgets in this game carry no data-driven
+visibility flag to flip.
+
+**The HUD byte** (section 31). Wrong direction and not inert. Withdrawn.
+
+**The cheat table's "UI Objects Hook"** at exe+0x1089270. Decompiled: `sub_1489210`
+is a memory-pool allocator, growing an array and handing out 516-byte blocks. edi
+is `this + 4`, an array member, not a UI object. The table's "UI Switch" float at
+-0xC4 is reading into the containing structure from a convenient capture point,
+not a per-widget visibility value.
+
+**The twenty settings classes** already extracted in SETTINGS_FIELDS.md, plus
+`GameSettings` and `NfsGameSettings` read field by field. Every Draw* field is a
+terrain, texture or streaming debug flag. `GameSettings` is generic Frostbite and
+still carries Battlefield fields (soldier weapon switching, unlimited ammo, aim
+assist). No HUD or UI toggle in any of them.
+
+**The UISettings reflection class**, found by locating the class-name string
+"UISettings" at 0x25770A8 and the ClassInfoData that points at it, 0x2ABE3D0, with
+its field array at 0x2B15110:
+
+    0x10  System              0x24  RootUIGraph
+    0x14  Bundles             0x28  ShowPlayerProfile          bool
+    0x18  ProfileOptions      0x29  OneBundlePerGraph          bool
+    0x1C  Language            0x2A  ShowOnlineRegistration     bool
+    0x20  MaxPendingLoadCount
+
+Nine fields, all about bundle loading and language. Nothing about drawing. (The
+field count stored in the ClassInfoData reads 53 and is wrong in the usual way:
+past the ninth entry the array bleeds into a neighbouring class, giving names like
+AllowVehicleOutsideCombatAreas and ContactShadowEnable. Same over-read the
+extractor had to be bounded against in section 7.)
+
+Also checked: no `HudSettings` or `UISystemSettings` class name exists in the
+binary, and no `DrawUI` string. Two `HudEnable` strings exist at 0x240459A and
+0x2540D13 but nothing points at either, so they are not reflection field names.
+
+### What is left
+
+Hooking the UI render pass and skipping it. That means finding the pass, which is
+real reverse engineering rather than a flag to flip, and it would have to be a
+toggle since hiding the UI permanently would take the menus with it.
+
+## 33. Pre-release audit
+
+Two real defects, both in the same family as everything else this log records.
+
+### The nitrous award hook was not player-only
+
+`nos_tuning.cpp` has three hooks. Two sit inside branches the game has already
+taken on `isHumanPlayer`, so they need no check of their own. The third does not:
+
+    0x0069AAD3  isHumanPlayer stored
+    0x0069AB46  requestNosBoostAmount stored   <- the hook, for EVERY vehicle
+    0x0069B5E2  the isHumanPlayer branch
+
+So `PlayerNosBoostScale` was scaling the AI's scripted nitrous grants as well as
+the player's, despite the name. Harmless at the shipped 1.0 and invisible in
+testing, which is exactly why it survived. Now gated on `[esi+0x102]`, which is
+already stored by that point. Clobbering EFLAGS there is safe: everything between
+the return address and the next compare at 0x0069AB5A is movss and mov.
+
+That is the fourth time a field that looked player-specific turned out to be
+written for AI cars too. The rule stands: before scaling or suppressing anything
+in `collectRaceCarInputState`, find out whether the AI reads it.
+
+### Run For Your Life stood aside for [TRAFFIC]
+
+`UpdateTrafficControls` opened with `if (g_Config.EnableTrafficControls) return;`,
+so with the traffic section enabled the mode's density ceiling never applied. A
+player could set `TrafficMaxDensity = 0.05` and soften the difficulty, which is
+the one thing the fixed values exist to prevent. The mode now wins, and hands the
+ceiling back to the INI when it disengages.
+
+### Everything else came back clean
+
+Every Init/Update declared, defined and called. build.bat and CMakeLists source
+lists identical. research/ excluded. INI and config.cpp key parity exact in both
+directions, and every ConfigStruct field is read from the INI. All twelve hook
+sites verify their bytes before patching. All eleven caves reproduce the
+instructions they replaced and keep the x87 stack balanced. No unreferenced
+helpers, no leftover markers, no unguarded logging in the ticker. Warning-free
+under -Wall -Wextra, which build.bat now passes.
+
+## 34. m_health reading zero is not a bad pointer
+
+A release-candidate run produced:
+
+    Vehicle health: the pointer chain has resolved to 0x... for 10 seconds but
+    m_health reads 0.000000, which is not a health value. The chain is wrong.
+
+The chain was fine. Zero is a real reading: a wrecked car sits at zero, and so
+does one between events before the next is initialised. The timing in the log says
+exactly that, with vehicle control dropping ten seconds earlier as the event ended
+and returning one second after the warning as the next one started.
+
+The range check tested `current > 0.0f`, so zero fell into the same bucket as the
+genuine garbage that motivated the guard (56659397312512.0 from a stale pointer
+during a level load). Zero is now skipped quietly and does not count toward the
+rejection counter. Everything else outside the plausible range still warns, NaN
+included, since a comparison against NaN is false.
+
+Worth keeping in mind when writing this kind of guard: a plausibility check has to
+distinguish "implausible" from "unremarkable". Treating a legitimate boundary value
+as corruption produces a message that tells the user their setup is broken when it
+is working.
+
+## 35. Release values
+
+Settled by playing, and fixed in Difficulty:: rather than the INI:
+
+    health cap                50      a ceiling, damage still accumulates
+    AI skill scale            1.12
+    AI glue scale             0.95
+    AI nitrous recharge       2.00    absolute; the game hardcodes 1.0 for AI
+    your nitrous recharge     0.10
+    your risky-driving bonus  10.0
+    your nitrous strength     1.12
+    traffic max density       0.25    the ceiling only
+
+Recharge and bonus are a pair. The recharge is (base + bonus) x scalar, so the
+0.10 and the 10.0 cancel out for earned nitrous while passive accumulation drops
+to a tenth. Changing one without the other silently starves or floods the rewards.
+
+Nitrous strength is the only value the mode raises in the player's favour, added
+late to offset how scarce the bar becomes. Every other player-side change is a
+removal, and every removal is player-only: AI cars keep their drafting, their
+assists and their nitrous, and get twice the recharge.
+
+PlayerNosBoostScale is the one nitrous setting the mode does not touch, because it
+carries scripted grants rather than earned rewards.

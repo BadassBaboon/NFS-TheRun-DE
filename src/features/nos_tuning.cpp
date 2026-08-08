@@ -112,13 +112,32 @@ asm(
 //
 // The game accumulates pending awards on the vehicle at +0xA78, hands the total
 // over here, and clears it on the next instruction.
+//
+// PLAYER ONLY, and unlike the other two hooks this one has to check for itself.
+// The player and AI hooks sit inside branches the game has already taken, but this
+// write happens near the top of the function, before any of that:
+//
+//     0x0069AAD3  isHumanPlayer stored
+//     0x0069AB46  requestNosBoostAmount stored   <- here, for EVERY vehicle
+//     0x0069B5E2  the isHumanPlayer branch
+//
+// so without the check a setting named PlayerNosBoostScale would also scale the
+// AI's scripted grants. The flag is already in place by this point, so the cave
+// reads it directly.
+//
+// Clobbering EFLAGS is safe here: everything between the return address and the
+// next compare at 0x0069AB5A is movss and mov, none of which read flags. The x87
+// stack stays balanced on both paths, one push and one pop.
 asm(
     ".text\n"
     ".globl _PlayerNosBoostHookAsm\n"
     "_PlayerNosBoostHookAsm:\n"
     "    flds  0xA78(%edi)\n"                 // the pending award
+    "    cmpb $0, 0x102(%esi)\n"              // isHumanPlayer?
+    "    je   1f\n"                           // an AI car -> pass its award through
     "    fmuls _g_PlayerNosBoost\n"
     "    fsts  _g_LastNosAward\n"             // peek for the log, without popping
+    "1:\n"
     "    fstps 0x60(%esi)\n"                  // the instruction pair this replaced
     "    jmpl *_g_pNosBoostReturn\n"
 );
@@ -212,7 +231,10 @@ namespace {
 
 namespace Features {
     void InitNosTuning() {
-        if (!g_Config.RunForYourLife) return;
+        if (!g_Config.RunForYourLife
+            && g_Config.PlayerNosRechargeScale == 1.0f && g_Config.PlayerNosBonusScale == 1.0f
+            && g_Config.PlayerNosStrengthScale == 1.0f && g_Config.PlayerNosBoostScale == 1.0f
+            && g_Config.AiNosRechargeScale == 1.0f) return;
         InstallSite("player", kSitePlayer, kExpectPlayer, sizeof(kExpectPlayer),
                     reinterpret_cast<void*>(PlayerNosHookAsm), &g_pPlayerNosReturn);
         InstallSite("ai",     kSiteAi,     kExpectAi,     sizeof(kExpectAi),
@@ -226,12 +248,15 @@ namespace Features {
 
         // 1.0 everywhere reproduces the game's own behaviour exactly, including
         // the AI's hardcoded constant, so a disengaged mode changes nothing.
+        // Recharge, bonus, strength and the AI rate are all fixed by the mode.
+        // Only the scripted-grant scale is left out, so that one follows the INI
+        // whether the mode is engaged or not.
         const bool rfyl = Difficulty::RunForYourLifeActive();
-        float recharge = rfyl ? g_Config.DeadlyPlayerNosRechargeScale : 1.0f;
-        float strength = rfyl ? g_Config.DeadlyPlayerNosStrengthScale : 1.0f;
-        float ai       = rfyl ? g_Config.DeadlyAiNosRechargeScale     : 1.0f;
-        float boost    = rfyl ? g_Config.DeadlyPlayerNosBoostScale    : 1.0f;
-        float bonus    = rfyl ? g_Config.DeadlyPlayerNosBonusScale    : 1.0f;
+        float recharge = rfyl ? Difficulty::kPlayerNosRechargeScale : g_Config.PlayerNosRechargeScale;
+        float bonus    = rfyl ? Difficulty::kPlayerNosBonusScale    : g_Config.PlayerNosBonusScale;
+        float ai       = rfyl ? Difficulty::kAiNosRechargeScale     : g_Config.AiNosRechargeScale;
+        float strength = rfyl ? Difficulty::kPlayerNosStrengthScale : g_Config.PlayerNosStrengthScale;
+        float boost    = g_Config.PlayerNosBoostScale;
 
         g_PlayerNosRecharge = recharge;
         g_PlayerNosStrength = strength;
@@ -242,7 +267,7 @@ namespace Features {
         // Reports the award the moment one is actually paid. This is how to tell
         // whether a near miss, an oncoming pass or a draft tops the bar up through
         // this path or through the passive recharge rate, which decides whether
-        // DeadlyPlayerNosBoostScale can do what it is meant to.
+        // PlayerNosBoostScale can do what it is meant to.
         if (g_Config.LogNosAwards) {
             float award = g_LastNosAward;
             if (award > 0.0f && award != g_LastReportedAward) {

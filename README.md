@@ -49,13 +49,18 @@ Extreme difficulty in The Run mostly means quicker AI. Pick Extreme with this on
 and the mod recognises it and changes the rules: the difficulty is renamed to
 **DEADLY** in the menus, your car is capped to half its health, nitrous stops
 filling on its own, drafting and the driving assists are stripped from your car,
-and the AI is scaled up.
+and the AI is scaled up. The one thing it hands back is a little more nitrous
+punch when you do earn a bar.
 
 Every one of those removals is **player-only**. AI cars keep their drafting,
 their assists, and get twice the nitrous recharge. That distinction is the whole
 design, and it is not decorative: the community cheat-table assist patches turned
 out to degrade AI cars more than the player's, so switching them on made races
 easier. Anything this mode takes away, it takes from you alone.
+
+It also raises the traffic density ceiling to 0.25 without touching the density
+the game picks per event, so busy roads get busier while quiet ones stay quiet.
+Forcing the density itself would flatten every event to one number.
 
 **Nitrous is earned, not removed.** An earlier version disabled it outright and
 that was a mistake, because several timed and chase events are close to
@@ -65,6 +70,11 @@ The bar stops filling while you drive carefully and fills fast when you take
 risks. That split works because the game keeps the reward in a separate value
 from the refill rate, which the field diagnostic in `docs/RESEARCH.md` pinned down
 by watching it pulse to 3.0 on every near miss.
+
+The mode's numbers are fixed in code and cannot be changed from the INI, because
+a difficulty every player can soften to taste is not a difficulty. Each one has an
+equivalent under `[VEHICLE]` and `[TRAFFIC]` for playing with the mode switched
+off; the mode overrides those while engaged and hands them back when it is not.
 
 A fifth difficulty is not possible from an ASI, which is worth stating plainly
 since it was the first thing tried. The menu is a fixed list of four items in an
@@ -101,6 +111,8 @@ from does the same and lists it as a known issue.
 | Anisotropic filtering | The game ships at 4 with no menu option. Forced to 16. The engine resets it to 4 on every level load, so the mod reapplies it. |
 | Driving assists | Strips the racing-line and road-alignment assists from your car only, keyed on the game's own human-player flag. Replaces thirteen cheat-table byte patches that made races easier. |
 | Vehicle health | Holds health high so damage never reaches the wreck screen. A cheat, so it ships off, and Run For Your Life ignores it. |
+| AI skill and rubber-banding | Two scalars the game already applies to AI performance. Being AI-side, neither can leak onto the player's car. |
+| Nitrous economy | Separate scalars for your refill rate, your reward for risky driving, your boost strength, and the AI's refill rate. Recharge is `(base + bonus) x scalar`, so the first two are set as a pair. |
 | Traffic density, max density and car count | |
 | Viewport shift and camera roll | Conflicts with FusionFix's camera; see the INI. |
 | Checkpoint timer, out-of-bounds reset, wrong-way respawn | For free roam and experimenting. |

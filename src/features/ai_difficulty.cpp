@@ -32,12 +32,9 @@
 // not touch the flags register, so unlike the input-state caves there is nothing
 // to reason about on the way back.
 //
-// The two scalars are INI-tunable ON PURPOSE, and only for now. Neither direction
-// is known: 5.0 on skill is clearly "make the AI fast", but glue is rubber-banding
-// and whether raising or lowering it makes a race harder needs to be found by
-// feel. Once the right values are known they get hardcoded next to the rest of the
-// mode's rules in features.h and the knobs come out, exactly as happened with the
-// kickup particle scale.
+// Run For Your Life uses fixed values from Difficulty:: rather than the INI, so
+// the difficulty means the same thing everywhere. The [VEHICLE] equivalents are
+// for players running with the mode off; the mode overrides them while engaged.
 
 extern "C" {
     float     g_AiSkillScale = 1.0f;
@@ -100,7 +97,9 @@ namespace {
 
 namespace Features {
     void InitAiDifficulty() {
-        if (!g_Config.RunForYourLife) return;
+        // Needed by the mode, or by anyone who set a scalar themselves.
+        if (!g_Config.RunForYourLife
+            && g_Config.AiSkillScale == 1.0f && g_Config.AiGlueScale == 1.0f) return;
         InstallSite("glue",  kSiteGlue,  kExpectGlue,
                     reinterpret_cast<void*>(AiGlueHookAsm),  &g_pAiGlueReturn);
         InstallSite("skill", kSiteSkill, kExpectSkill,
@@ -112,9 +111,10 @@ namespace Features {
 
         // 1.0 leaves the game's own scaling untouched, so a disengaged mode is
         // indistinguishable from the mod not being here.
+        // The mode's values are fixed in code; outside it the INI decides.
         const bool rfyl = Difficulty::RunForYourLifeActive();
-        float skill = rfyl ? g_Config.DeadlyAiSkillScale : 1.0f;
-        float glue  = rfyl ? g_Config.DeadlyAiGlueScale  : 1.0f;
+        float skill = rfyl ? Difficulty::kAiSkillScale : g_Config.AiSkillScale;
+        float glue  = rfyl ? Difficulty::kAiGlueScale  : g_Config.AiGlueScale;
 
         g_AiSkillScale = skill;
         g_AiGlueScale  = glue;

@@ -30,6 +30,7 @@ DWORD WINAPI MainThread(LPVOID /*lpParam*/) {
     // 3. Initialize Features
     Features::InitGarageCarRender();
     Features::InitExtraUIOptions();
+    Features::InitPhotoMode();
     Features::InitTrackRules();
     Features::InitTrafficControls();
     Features::InitEngineAudioSlewFix();
@@ -50,6 +51,7 @@ DWORD WINAPI MainThread(LPVOID /*lpParam*/) {
         Features::UpdateDifficulty();     // decides whether the mode is engaged
         Features::UpdateInputState();     // reads that decision, so it runs after
         Features::UpdateAiDifficulty();
+        Features::UpdateTrafficControls();
         Features::UpdateNosTuning();
         Features::UpdateTodRandomizer();
         Features::UpdateDifficultyText();

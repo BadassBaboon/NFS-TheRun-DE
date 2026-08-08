@@ -19,16 +19,6 @@ struct ConfigStruct {
     int RandomizeTimeOfDay = 0;
 
     int RunForYourLife = 1;
-    // TEMPORARY tuning knobs for the AI scalars. 1.0 = the game's own value.
-    // These get hardcoded into Difficulty:: and removed once the right values
-    // are known, the same way KickupVelocityScale was settled.
-    float DeadlyPlayerNosRechargeScale = 0.1f;  // passive trickle, cut to a tenth
-    float DeadlyPlayerNosStrengthScale = 1.0f;  // <1 weaker boost
-    float DeadlyPlayerNosBonusScale     = 10.0f; // risky-driving reward, restored
-    float DeadlyPlayerNosBoostScale     = 1.0f;  // scripted grants only, in practice
-    float DeadlyAiNosRechargeScale     = 2.0f;  // the game hardcodes 1.0 for AI
-    float DeadlyAiSkillScale = 5.0f;
-    float DeadlyAiGlueScale  = 2.0f;
 
     // [GRAPHICS_FPS]
     int EnableFramerateUnlocker = 1;   // master gate: injects GameTime + control hooks
@@ -38,6 +28,9 @@ struct ConfigStruct {
 
     // [UI_DEBUG]
     int EnableExtraUIOptions = 0;
+    // Forces just the pause menu's photo mode entry visible, without the debug
+    // entries EnableExtraUIOptions also brings back.
+    int AlwaysShowPhotoMode = 1;
 
     // [TRACK_RULES] — all OFF by default; opt-in gameplay changes
     int DisableCheckpointTimer = 0;
@@ -57,6 +50,17 @@ struct ConfigStruct {
     // fb::NFSVehicle::m_health (offset 0x1878, float). Stock 100; the wreck
     // screen fires when damage drives it low enough. <=0 leaves it alone.
     float VehicleHealth = -1.0f;
+
+    // AI and nitrous scalars. 1.0 on any of these is the game's own value, so the
+    // section is inert until something is changed. Run For Your Life overrides all
+    // of them except the two nitrous ones it does not use.
+    float AiSkillScale           = 1.0f;
+    float AiGlueScale            = 1.0f;
+    float AiNosRechargeScale     = 1.0f;
+    float PlayerNosRechargeScale = 1.0f;
+    float PlayerNosBonusScale    = 1.0f;
+    float PlayerNosStrengthScale = 1.0f;
+    float PlayerNosBoostScale    = 1.0f;
 
     // [HIGH_FPS_FIXES]
     // Fixes the engine-audio pitch above 30 FPS. 1 = snap (recommended),

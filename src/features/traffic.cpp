@@ -17,6 +17,9 @@
 //   Vehicle limit : +E5A9A3  mov eax,[eax+60]  ; cmp eax,19    (6 bytes)
 
 extern "C" {
+    // 0 leaves the game's own ceiling in place. Run For Your Life raises only this
+    // one value, so the per-event density the game chooses still varies normally.
+    uint8_t   g_TrafficMaxDensityForce = 0;
     float     g_TrafficDensityScaleVal = 0.05f;
     float     g_TrafficMaxDensityVal   = 0.15f;
     int32_t   g_TrafficVehicleLimitVal = 25;
@@ -41,13 +44,28 @@ asm(
     "    jmpl *_g_TrafficDensityReturn\n"
 );
 
-// Force [eax+0x1C] = our max density, then replay: movss xmm2,[eax+1C]
+// Optionally force [eax+0x1C] = our max density, then replay: movss xmm2,[eax+1C]
+//
+// Unlike the other two this has a pass-through path, because Run For Your Life
+// raises the ceiling without touching the density itself. With the flag clear the
+// game's own value is loaded and nothing changes, which is what lets the hook be
+// installed for the mode without [TRAFFIC] being on.
+//
+// The flag test writes EFLAGS. The density site eight bytes further on is reached
+// with flags this cave did not set, so pushfl/popfl brackets the test rather than
+// assuming nothing downstream reads them.
 asm(
     ".text\n"
     ".globl _TrafficMaxDensityHookAsm\n"
     "_TrafficMaxDensityHookAsm:\n"
+    "    pushfl\n"
+    "    cmpb $0, _g_TrafficMaxDensityForce\n"
+    "    je   1f\n"
     "    movss _g_TrafficMaxDensityVal, %xmm2\n"
     "    movss %xmm2, 0x1C(%eax)\n"
+    "1:\n"
+    "    popfl\n"
+    "    movss 0x1C(%eax), %xmm2\n"       // the instruction this replaced
     "    jmpl *_g_TrafficMaxDensityReturn\n"
 );
 
@@ -85,20 +103,31 @@ namespace Features {
     }
 
     void InitTrafficControls() {
+        static const uint8_t densSig[7] = { 0xF3, 0x0F, 0x10, 0x01, 0x83, 0xE0, 0xFC };
+        static const uint8_t maxdSig[5] = { 0xF3, 0x0F, 0x10, 0x50, 0x1C };
+        static const uint8_t limSig[6]  = { 0x8B, 0x40, 0x60, 0x83, 0xF8, 0x19 };
+
+        // Run For Your Life raises the density ceiling and nothing else, so it only
+        // needs the one hook. Forcing the density itself would override the value
+        // the game picks per event, flattening busy and quiet roads to the same
+        // number, which is the opposite of what raising a ceiling is for.
         if (!g_Config.EnableTrafficControls) {
-            Logger::Log("EnableTrafficControls disabled in INI.");
+            if (g_Config.RunForYourLife) {
+                InstallTrafficHook("Traffic Max Density", 0xE5EEE9, 5, maxdSig,
+                                   &g_TrafficMaxDensityReturn,
+                                   reinterpret_cast<void*>(TrafficMaxDensityHookAsm));
+            } else {
+                Logger::Log("EnableTrafficControls disabled in INI.");
+            }
             return;
         }
 
         g_TrafficDensityScaleVal = g_Config.TrafficDensityScale;
         g_TrafficMaxDensityVal   = g_Config.TrafficMaxDensity;
         g_TrafficVehicleLimitVal = g_Config.TrafficVehicleLimit;
+        g_TrafficMaxDensityForce = 1;
         Logger::Log("Traffic controls: DensityScale=%.3f MaxDensity=%.3f VehicleLimit=%d",
                     g_TrafficDensityScaleVal, g_TrafficMaxDensityVal, g_TrafficVehicleLimitVal);
-
-        static const uint8_t densSig[7] = { 0xF3, 0x0F, 0x10, 0x01, 0x83, 0xE0, 0xFC };
-        static const uint8_t maxdSig[5] = { 0xF3, 0x0F, 0x10, 0x50, 0x1C };
-        static const uint8_t limSig[6]  = { 0x8B, 0x40, 0x60, 0x83, 0xF8, 0x19 };
 
         InstallTrafficHook("Traffic Density Scale", 0xE5EEF6, 7, densSig,
                            &g_TrafficDensityReturn, reinterpret_cast<void*>(TrafficDensityHookAsm));
@@ -106,5 +135,40 @@ namespace Features {
                            &g_TrafficMaxDensityReturn, reinterpret_cast<void*>(TrafficMaxDensityHookAsm));
         InstallTrafficHook("Traffic Vehicle Limit", 0xE5A9A3, 6, limSig,
                            &g_TrafficVehicleLimitReturn, reinterpret_cast<void*>(TrafficVehicleLimitHookAsm));
+    }
+
+    // Raises the ceiling only while the mode is engaged. When [TRAFFIC] is driving
+    // things the INI value already won at startup and this leaves it alone.
+    void UpdateTrafficControls() {
+        if (!g_TrafficMaxDensityReturn) return;   // hook never installed
+
+        // The mode wins over [TRAFFIC] rather than standing aside for it. An
+        // earlier version returned early whenever EnableTrafficControls was set,
+        // which let a player put TrafficMaxDensity at 0.05 and quietly soften the
+        // difficulty. The whole point of the fixed values is that the INI cannot
+        // do that.
+        static bool loggedMode = false;
+        const bool rfyl = Difficulty::RunForYourLifeActive();
+
+        if (rfyl) {
+            g_TrafficMaxDensityVal   = Difficulty::kTrafficMaxDensity;
+            g_TrafficMaxDensityForce = 1;
+            if (!loggedMode) {
+                Logger::Log("Traffic: max density ceiling raised to %.2f%s. The per-event "
+                            "density the game picks is untouched.",
+                            Difficulty::kTrafficMaxDensity,
+                            g_Config.EnableTrafficControls ? ", overriding [TRAFFIC]" : "");
+                loggedMode = true;
+            }
+        } else if (g_Config.EnableTrafficControls) {
+            // Hand the ceiling back to the INI, which is what the other two hooks
+            // have been using all along.
+            g_TrafficMaxDensityVal   = g_Config.TrafficMaxDensity;
+            g_TrafficMaxDensityForce = 1;
+            loggedMode = false;
+        } else {
+            g_TrafficMaxDensityForce = 0;   // pass the game's own value through
+            loggedMode = false;
+        }
     }
 }

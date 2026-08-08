@@ -25,6 +25,7 @@ namespace Config {
         g_Config.UnlockCutsceneFPS    = GetPrivateProfileIntA("GRAPHICS_FPS", "UnlockCutsceneFPS",   0,  iniPath);
         g_Config.ClampSimRateWhenNoControl = GetPrivateProfileIntA("GRAPHICS_FPS", "ClampSimRateWhenNoControl", 1, iniPath);
         g_Config.EnableExtraUIOptions = GetPrivateProfileIntA("UI_DEBUG",     "EnableExtraUIOptions", 0,  iniPath);
+        g_Config.AlwaysShowPhotoMode  = GetPrivateProfileIntA("UI_DEBUG",     "AlwaysShowPhotoMode",  1,  iniPath);
 
         g_Config.DisableCheckpointTimer   = GetPrivateProfileIntA("TRACK_RULES", "DisableCheckpointTimer",   0, iniPath);
         g_Config.DisableResetOOB          = GetPrivateProfileIntA("TRACK_RULES", "DisableResetOOB",          0, iniPath);
@@ -37,16 +38,16 @@ namespace Config {
 
         g_Config.RandomizeTimeOfDay   = GetPrivateProfileIntA("GAMEPLAY", "RandomizeTimeOfDay", 0, iniPath);
         g_Config.RunForYourLife       = GetPrivateProfileIntA("GAMEPLAY", "RunForYourLife", 1, iniPath);
-        g_Config.DeadlyPlayerNosRechargeScale = ReadIniFloat("GAMEPLAY", "DeadlyPlayerNosRechargeScale", 0.1f, iniPath);
-        g_Config.DeadlyPlayerNosStrengthScale = ReadIniFloat("GAMEPLAY", "DeadlyPlayerNosStrengthScale", 1.0f, iniPath);
-        g_Config.DeadlyPlayerNosBonusScale    = ReadIniFloat("GAMEPLAY", "DeadlyPlayerNosBonusScale",    10.0f, iniPath);
-        g_Config.DeadlyPlayerNosBoostScale    = ReadIniFloat("GAMEPLAY", "DeadlyPlayerNosBoostScale",    1.0f, iniPath);
-        g_Config.DeadlyAiNosRechargeScale     = ReadIniFloat("GAMEPLAY", "DeadlyAiNosRechargeScale",     2.0f, iniPath);
-        g_Config.DeadlyAiSkillScale   = ReadIniFloat("GAMEPLAY", "DeadlyAiSkillScale", 5.0f, iniPath);
-        g_Config.DeadlyAiGlueScale    = ReadIniFloat("GAMEPLAY", "DeadlyAiGlueScale",  2.0f, iniPath);
 
         g_Config.DisablePlayerAssists       = GetPrivateProfileIntA("VEHICLE", "DisablePlayerAssists", 0, iniPath);
         g_Config.VehicleHealth              = ReadIniFloat("VEHICLE", "VehicleHealth", -1.0f, iniPath);
+        g_Config.AiSkillScale           = ReadIniFloat("VEHICLE", "AiSkillScale",           1.0f, iniPath);
+        g_Config.AiGlueScale            = ReadIniFloat("VEHICLE", "AiGlueScale",            1.0f, iniPath);
+        g_Config.AiNosRechargeScale     = ReadIniFloat("VEHICLE", "AiNosRechargeScale",     1.0f, iniPath);
+        g_Config.PlayerNosRechargeScale = ReadIniFloat("VEHICLE", "PlayerNosRechargeScale", 1.0f, iniPath);
+        g_Config.PlayerNosBonusScale    = ReadIniFloat("VEHICLE", "PlayerNosBonusScale",    1.0f, iniPath);
+        g_Config.PlayerNosStrengthScale = ReadIniFloat("VEHICLE", "PlayerNosStrengthScale", 1.0f, iniPath);
+        g_Config.PlayerNosBoostScale    = ReadIniFloat("VEHICLE", "PlayerNosBoostScale",    1.0f, iniPath);
 
         g_Config.FixEngineAudioSlew    = GetPrivateProfileIntA("HIGH_FPS_FIXES", "FixEngineAudioSlew",    1, iniPath);
         g_Config.FixKickupParticles     = GetPrivateProfileIntA("HIGH_FPS_FIXES", "FixKickupParticles", 1, iniPath);
@@ -77,6 +78,7 @@ namespace Config {
         Logger::Log("  DebugLog=%d  FPSLimit=%d  UnlockCutsceneFPS=%d  EnableExtraUIOptions=%d",
             g_Config.DebugLog, g_Config.FPSLimit, g_Config.UnlockCutsceneFPS,
             g_Config.EnableExtraUIOptions);
+        Logger::Log("  AlwaysShowPhotoMode=%d", g_Config.AlwaysShowPhotoMode);
         Logger::Log("  EnableFramerateUnlocker=%d  ClampSimRateWhenNoControl=%d",
             g_Config.EnableFramerateUnlocker, g_Config.ClampSimRateWhenNoControl);
         Logger::Log("  DisableCheckpointTimer=%d  DisableResetOOB=%d  DisableWrongWayRespawn=%d",
@@ -86,12 +88,12 @@ namespace Config {
         Logger::Log("  DisablePlayerAssists=%d", g_Config.DisablePlayerAssists);
         Logger::Log("  VehicleHealth=%.1f", g_Config.VehicleHealth);
         Logger::Log("  RandomizeTimeOfDay=%d", g_Config.RandomizeTimeOfDay);
-        Logger::Log("  RunForYourLife=%d  DeadlyAiSkillScale=%.2f  DeadlyAiGlueScale=%.2f",
-            g_Config.RunForYourLife, g_Config.DeadlyAiSkillScale, g_Config.DeadlyAiGlueScale);
-        Logger::Log("  NOS: PlayerRecharge=%.2f  PlayerBonus=%.2f  PlayerStrength=%.2f  PlayerBoost=%.2f  AiRecharge=%.2f",
-            g_Config.DeadlyPlayerNosRechargeScale, g_Config.DeadlyPlayerNosBonusScale,
-            g_Config.DeadlyPlayerNosStrengthScale, g_Config.DeadlyPlayerNosBoostScale,
-            g_Config.DeadlyAiNosRechargeScale);
+        Logger::Log("  RunForYourLife=%d", g_Config.RunForYourLife);
+        Logger::Log("  AiSkillScale=%.2f  AiGlueScale=%.2f  AiNosRechargeScale=%.2f",
+            g_Config.AiSkillScale, g_Config.AiGlueScale, g_Config.AiNosRechargeScale);
+        Logger::Log("  PlayerNos: Recharge=%.2f  Bonus=%.2f  Strength=%.2f  Boost=%.2f",
+            g_Config.PlayerNosRechargeScale, g_Config.PlayerNosBonusScale,
+            g_Config.PlayerNosStrengthScale, g_Config.PlayerNosBoostScale);
         Logger::Log("  EnableRenderTweaks=%d  ForceFov=%.1f  FovDrivingOnly=%d  ForceRenderShiftEnabled=%d  ShiftX=%.3f  ShiftY=%.3f  ForceRoll=%.3f  FixMinimapRendering=%d",
             g_Config.EnableRenderTweaks, g_Config.ForceFov, g_Config.ForceFovOnlyWhileDriving, g_Config.ForceRenderShiftEnabled,
             g_Config.ForceRenderShiftX, g_Config.ForceRenderShiftY, g_Config.ForceRoll, g_Config.FixMinimapRendering);

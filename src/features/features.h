@@ -12,6 +12,25 @@ namespace Difficulty {
     // The label has a hard limit of seven characters: the game stores its copies
     // of "EXTREME" back to back with no padding between them.
     const float kHealthCap      = 50.0f;
+
+    // The rest of the mode's numbers, arrived at by playing it. Everything here
+    // has an equivalent in [VEHICLE] that the player can set for themselves; the
+    // mode overrides that while it is engaged.
+    const float kAiSkillScale          = 1.12f;
+    const float kAiGlueScale           = 0.95f;
+    const float kAiNosRechargeScale    = 2.00f;
+    const float kPlayerNosRechargeScale = 0.10f;
+    const float kPlayerNosBonusScale    = 10.0f;
+    // A little more push when you do get to use it, to offset how scarce the bar
+    // now is. This is the one thing the mode gives the player rather than takes.
+    const float kPlayerNosStrengthScale = 1.12f;
+    // Only the ceiling is raised. The per-event density the game picks is left
+    // alone, so busy roads stay busy and empty ones stay empty; the mode just
+    // stops capping the busy ones so low.
+    const float kTrafficMaxDensity     = 0.25f;
+
+    // The scripted-grant scale is deliberately NOT part of the mode. It stays
+    // wherever [VEHICLE] leaves it.
     const char* const kNewLabel = "DEADLY";
     const char* const kNewDescription = "Run for your life, one mistake and you're dead";
 
@@ -28,6 +47,10 @@ namespace Features {
     // Unlocks QA debug menu, Photo Mode, and hidden UI entries
     void InitExtraUIOptions();
 
+    // Forces the pause menu's photo mode entry visible on its own, rather than
+    // unhiding every hidden entry the way InitExtraUIOptions does.
+    void InitPhotoMode();
+
     // Unlocks framerate cap via GameTime hook; adjustable via INI
     void InitFramerateUnlocker();
     void UpdateFramerateUnlocker();
@@ -38,6 +61,7 @@ namespace Features {
 
     // Forces traffic density scale, max density, and vehicle limit. INI-gated, OFF by default.
     void InitTrafficControls();
+    void UpdateTrafficControls();
 
     // Drafting and driving-assist suppression, both PLAYER ONLY. One cave keyed
     // on the game's own isHumanPlayer flag, so AI cars are never affected.

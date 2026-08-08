@@ -12,6 +12,7 @@ set OUT=NFSTR_DefinitiveEdition.asi
     src/features/patch_util.cpp ^
     src/features/garage_render.cpp ^
     src/features/extra_ui.cpp ^
+    src/features/photo_mode.cpp ^
     src/features/fps_unlocker.cpp ^
     src/features/track_rules.cpp ^
     src/features/traffic.cpp ^
