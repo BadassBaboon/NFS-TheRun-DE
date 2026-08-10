@@ -13,23 +13,29 @@
 // directly with GetGameBase() (verified against the exe: .text maps file-offset
 // 1:1 to RVA, ImageBase 0x00400000, and each signature is unique in the binary):
 //   Density scale : +E5EEF6  movss xmm0,[ecx]  ; and eax,-04   (7 bytes)
-//   Max density   : +E5EEE9  movss xmm2,[eax+1C]               (5 bytes)
+//   Max density   : +E5EEE9  movss xmm2,[eax+1C]               (5 bytes)  term
+//                   +E5EFDE  movss xmm2,[eax+1C]               (5 bytes)  clamp
 //   Vehicle limit : +E5A9A3  mov eax,[eax+60]  ; cmp eax,19    (6 bytes)
 
 extern "C" {
-    // 0 leaves the game's own ceiling in place. Run For Your Life raises only this
-    // one value, so the per-event density the game chooses still varies normally.
+    // Absolute override, driven by [TRAFFIC]. 0 leaves the ceiling alone.
     uint8_t   g_TrafficMaxDensityForce = 0;
+    // Multiplier path, used by Run For Your Life. Mutually exclusive with the
+    // absolute override above, which [TRAFFIC] drives.
+    uint8_t   g_TrafficMaxDensityScaleOn = 0;
+    float     g_TrafficMaxDensityMul     = 1.0f;
     float     g_TrafficDensityScaleVal = 0.05f;
     float     g_TrafficMaxDensityVal   = 0.15f;
     int32_t   g_TrafficVehicleLimitVal = 25;
 
     uintptr_t g_TrafficDensityReturn      = 0;
     uintptr_t g_TrafficMaxDensityReturn   = 0;
+    uintptr_t g_TrafficMaxDensityReturn2  = 0;
     uintptr_t g_TrafficVehicleLimitReturn = 0;
 
     void TrafficDensityHookAsm();
     void TrafficMaxDensityHookAsm();
+    void TrafficMaxDensityHookAsm2();
     void TrafficVehicleLimitHookAsm();
 }
 
@@ -44,30 +50,45 @@ asm(
     "    jmpl *_g_TrafficDensityReturn\n"
 );
 
-// Optionally force [eax+0x1C] = our max density, then replay: movss xmm2,[eax+1C]
+// Max density. Two modes and, unlike the other two hooks, NO memory write.
 //
-// Unlike the other two this has a pass-through path, because Run For Your Life
-// raises the ceiling without touching the density itself. With the flag clear the
-// game's own value is loaded and nothing changes, which is what lets the hook be
-// installed for the mode without [TRAFFIC] being on.
+// sub_125EEE0 reads [eax+0x1C] twice and uses it for two different things:
 //
-// The flag test writes EFLAGS. The density site eight bytes further on is reached
-// with flags this cave did not set, so pushfl/popfl brackets the test rather than
-// assuming nothing downstream reads them.
-asm(
-    ".text\n"
-    ".globl _TrafficMaxDensityHookAsm\n"
-    "_TrafficMaxDensityHookAsm:\n"
-    "    pushfl\n"
-    "    cmpb $0, _g_TrafficMaxDensityForce\n"
-    "    je   1f\n"
-    "    movss _g_TrafficMaxDensityVal, %xmm2\n"
-    "    movss %xmm2, 0x1C(%eax)\n"
-    "1:\n"
-    "    popfl\n"
-    "    movss 0x1C(%eax), %xmm2\n"       // the instruction this replaced
-    "    jmpl *_g_TrafficMaxDensityReturn\n"
-);
+//     0x0125EEE9  movss xmm2,[eax+1Ch]    a term:  density = scale * maxDensity
+//     0x0125EFDE  movss xmm2,[eax+1Ch]    the hard ceiling the result is clamped to
+//
+// so both reads have to agree or the calculation and the clamp disagree. An
+// earlier version wrote the value into [eax+0x1C] once and let both reads pick it
+// up, which works for an absolute override but is fatal for a multiplier: the
+// site is hit repeatedly and each pass would multiply the already-multiplied
+// value, compounding 0.15 to 0.225 to 0.34 and upward without limit.
+//
+// Scaling in the register instead is idempotent by construction. Nothing is
+// written back, so the event's authored value stays intact and every pass starts
+// from the same number. Both read sites carry an identical copy of this cave.
+//
+// The flag test writes EFLAGS, and neither site sets its own flags beforehand, so
+// pushfl/popfl brackets it rather than assuming nothing downstream reads them.
+#define TRAFFIC_MAXDENSITY_CAVE(NAME, RET)                     \
+    ".text\n"                                                  \
+    ".globl _" NAME "\n"                                       \
+    "_" NAME ":\n"                                             \
+    "    movss 0x1C(%eax), %xmm2\n"   /* the instruction this replaced */ \
+    "    pushfl\n"                                             \
+    "    cmpb $0, _g_TrafficMaxDensityForce\n"                 \
+    "    je   1f\n"                                            \
+    "    movss _g_TrafficMaxDensityVal, %xmm2\n"  /* absolute, from [TRAFFIC] */ \
+    "    jmp  2f\n"                                            \
+    "1:\n"                                                     \
+    "    cmpb $0, _g_TrafficMaxDensityScaleOn\n"               \
+    "    je   2f\n"                                            \
+    "    mulss _g_TrafficMaxDensityMul, %xmm2\n"  /* multiplier, from the mode */ \
+    "2:\n"                                                     \
+    "    popfl\n"                                              \
+    "    jmpl *_" RET "\n"
+
+asm(TRAFFIC_MAXDENSITY_CAVE("TrafficMaxDensityHookAsm",  "g_TrafficMaxDensityReturn"));
+asm(TRAFFIC_MAXDENSITY_CAVE("TrafficMaxDensityHookAsm2", "g_TrafficMaxDensityReturn2"));
 
 // Force [eax+0x60] = our limit, then replay: mov eax,[eax+60] ; cmp eax,19
 // edx is scratch; pop it before the cmp so its flags reach the returned-to code.
@@ -107,15 +128,18 @@ namespace Features {
         static const uint8_t maxdSig[5] = { 0xF3, 0x0F, 0x10, 0x50, 0x1C };
         static const uint8_t limSig[6]  = { 0x8B, 0x40, 0x60, 0x83, 0xF8, 0x19 };
 
-        // Run For Your Life raises the density ceiling and nothing else, so it only
-        // needs the one hook. Forcing the density itself would override the value
-        // the game picks per event, flattening busy and quiet roads to the same
-        // number, which is the opposite of what raising a ceiling is for.
+        // Run For Your Life scales the density ceiling and nothing else, so it needs
+        // only the two max-density hooks. Forcing the density scale itself would
+        // override the value the game picks per event, flattening busy and quiet
+        // roads to the same number.
         if (!g_Config.EnableTrafficControls) {
             if (g_Config.RunForYourLife) {
-                InstallTrafficHook("Traffic Max Density", 0xE5EEE9, 5, maxdSig,
+                InstallTrafficHook("Traffic Max Density (term)", 0xE5EEE9, 5, maxdSig,
                                    &g_TrafficMaxDensityReturn,
                                    reinterpret_cast<void*>(TrafficMaxDensityHookAsm));
+                InstallTrafficHook("Traffic Max Density (clamp)", 0xE5EFDE, 5, maxdSig,
+                                   &g_TrafficMaxDensityReturn2,
+                                   reinterpret_cast<void*>(TrafficMaxDensityHookAsm2));
             } else {
                 Logger::Log("EnableTrafficControls disabled in INI.");
             }
@@ -131,8 +155,10 @@ namespace Features {
 
         InstallTrafficHook("Traffic Density Scale", 0xE5EEF6, 7, densSig,
                            &g_TrafficDensityReturn, reinterpret_cast<void*>(TrafficDensityHookAsm));
-        InstallTrafficHook("Traffic Max Density", 0xE5EEE9, 5, maxdSig,
+        InstallTrafficHook("Traffic Max Density (term)", 0xE5EEE9, 5, maxdSig,
                            &g_TrafficMaxDensityReturn, reinterpret_cast<void*>(TrafficMaxDensityHookAsm));
+        InstallTrafficHook("Traffic Max Density (clamp)", 0xE5EFDE, 5, maxdSig,
+                           &g_TrafficMaxDensityReturn2, reinterpret_cast<void*>(TrafficMaxDensityHookAsm2));
         InstallTrafficHook("Traffic Vehicle Limit", 0xE5A9A3, 6, limSig,
                            &g_TrafficVehicleLimitReturn, reinterpret_cast<void*>(TrafficVehicleLimitHookAsm));
     }
@@ -151,23 +177,28 @@ namespace Features {
         const bool rfyl = Difficulty::RunForYourLifeActive();
 
         if (rfyl) {
-            g_TrafficMaxDensityVal   = Difficulty::kTrafficMaxDensity;
-            g_TrafficMaxDensityForce = 1;
+            // Multiply what the event was authored with rather than replacing it,
+            // so a quiet stretch stays quieter than a city one.
+            g_TrafficMaxDensityMul     = Difficulty::kTrafficMaxDensityScale;
+            g_TrafficMaxDensityScaleOn = 1;
+            g_TrafficMaxDensityForce   = 0;   // the multiplier wins over [TRAFFIC]
             if (!loggedMode) {
-                Logger::Log("Traffic: max density ceiling raised to %.2f%s. The per-event "
-                            "density the game picks is untouched.",
-                            Difficulty::kTrafficMaxDensity,
+                Logger::Log("Traffic: each event's max density multiplied by %.2f%s. The "
+                            "density the game picks per event is untouched.",
+                            Difficulty::kTrafficMaxDensityScale,
                             g_Config.EnableTrafficControls ? ", overriding [TRAFFIC]" : "");
                 loggedMode = true;
             }
         } else if (g_Config.EnableTrafficControls) {
-            // Hand the ceiling back to the INI, which is what the other two hooks
-            // have been using all along.
-            g_TrafficMaxDensityVal   = g_Config.TrafficMaxDensity;
-            g_TrafficMaxDensityForce = 1;
+            // Hand the ceiling back to the INI's absolute value, which is what the
+            // other two hooks have been using all along.
+            g_TrafficMaxDensityVal     = g_Config.TrafficMaxDensity;
+            g_TrafficMaxDensityForce   = 1;
+            g_TrafficMaxDensityScaleOn = 0;
             loggedMode = false;
         } else {
-            g_TrafficMaxDensityForce = 0;   // pass the game's own value through
+            g_TrafficMaxDensityForce   = 0;   // pass the game's own value through
+            g_TrafficMaxDensityScaleOn = 0;
             loggedMode = false;
         }
     }

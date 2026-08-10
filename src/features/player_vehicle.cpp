@@ -38,7 +38,11 @@ namespace {
     const float kHealthMin = 0.0f;
     const float kHealthMax = 100000.0f;
 
-    bool g_LoggedVehicle = false;
+    // The car this last reported on. Logging is keyed on the pointer changing
+    // rather than latching after the first one, so every event confirms the cap
+    // was applied. A one-shot latch meant the log proved nothing past the first
+    // race, which is exactly when a stale chain would go unnoticed.
+    uintptr_t g_LastVehicle = 0;
     bool g_LoggedReject  = false;
 
     // The chain resolves to a stale object for a few seconds while a level loads,
@@ -109,10 +113,14 @@ namespace Features {
 
         g_RejectTicks = 0;
 
-        if (!g_LoggedVehicle) {
+        if (vehicle != g_LastVehicle) {
             Logger::Log("Vehicle health: NFSVehicle at 0x%08X, m_health was %.1f, %s at %.1f.",
                         vehicle, current, rfyl ? "capped" : "held", target);
-            g_LoggedVehicle = true;
+            g_LastVehicle = vehicle;
+            // A good read clears the rejection latch, so a genuine failure later
+            // in the session is reported instead of being swallowed by an earlier
+            // transient one.
+            g_LoggedReject = false;
         }
 
         // Two different behaviours, because the same write means opposite things

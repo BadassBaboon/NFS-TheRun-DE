@@ -17,17 +17,18 @@ namespace Difficulty {
     // has an equivalent in [VEHICLE] that the player can set for themselves; the
     // mode overrides that while it is engaged.
     const float kAiSkillScale          = 1.12f;
-    const float kAiGlueScale           = 0.95f;
+    const float kAiGlueScale           = 0.97f;
     const float kAiNosRechargeScale    = 2.00f;
     const float kPlayerNosRechargeScale = 0.10f;
     const float kPlayerNosBonusScale    = 10.0f;
     // A little more push when you do get to use it, to offset how scarce the bar
     // now is. This is the one thing the mode gives the player rather than takes.
     const float kPlayerNosStrengthScale = 1.12f;
-    // Only the ceiling is raised. The per-event density the game picks is left
-    // alone, so busy roads stay busy and empty ones stay empty; the mode just
-    // stops capping the busy ones so low.
-    const float kTrafficMaxDensity     = 0.25f;
+    // A MULTIPLIER on whatever ceiling the event was authored with, not a fixed
+    // number. A flat 0.25 was tried first and made sparse events as busy as city
+    // ones, which took the speed out of the game. Scaling keeps each event's own
+    // character and just makes the busy ones busier.
+    const float kTrafficMaxDensityScale = 2.0f;
 
     // The scripted-grant scale is deliberately NOT part of the mode. It stays
     // wherever [VEHICLE] leaves it.

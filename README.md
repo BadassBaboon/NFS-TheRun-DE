@@ -58,9 +58,11 @@ design, and it is not decorative: the community cheat-table assist patches turne
 out to degrade AI cars more than the player's, so switching them on made races
 easier. Anything this mode takes away, it takes from you alone.
 
-It also raises the traffic density ceiling to 0.25 without touching the density
-the game picks per event, so busy roads get busier while quiet ones stay quiet.
-Forcing the density itself would flatten every event to one number.
+It also doubles each event's traffic density ceiling, without touching the density
+the game picks per event. A fixed value was tried first and was wrong:
+forcing every event to the same ceiling made sparse stretches as congested as city
+ones, and traffic that thick takes the speed out of the game. Multiplying keeps
+each event's own character and makes the busy ones busier.
 
 **Nitrous is earned, not removed.** An earlier version disabled it outright and
 that was a mistake, because several timed and chase events are close to

@@ -1141,3 +1141,61 @@ assists and their nitrous, and get twice the recharge.
 
 PlayerNosBoostScale is the one nitrous setting the mode does not touch, because it
 carries scripted grants rather than earned rewards.
+
+## 36. Traffic max density: a multiplier, and why the memory write had to go
+
+A fixed ceiling of 0.25 was wrong in play. Events are authored with different
+densities, and forcing all of them to one number made sparse stretches as
+congested as city ones. Traffic that thick removes the speed the game is about.
+A multiplier keeps each event's own character.
+
+Switching to a multiplier forced a change in how the hook works, for a reason that
+is easy to miss. `sub_125EEE0` reads `[eax+0x1C]` TWICE and uses it for two
+different things:
+
+    0x0125EEE9  movss xmm2,[eax+1Ch]    a term:  density = scale * maxDensity
+    0x0125EFDE  movss xmm2,[eax+1Ch]    the hard ceiling the result is clamped to
+
+    v17 = v6 * v4;                  scale * maxDensity
+    ...
+    if (v13 <= v11) v13 = v11;
+    if (v13 <= v14) return v13; else return v14;      v14 is the second read
+
+Both reads must agree or the calculation and the clamp disagree, which is why the
+original implementation wrote the value into `[eax+0x1C]` and let both reads pick
+it up.
+
+That write is fine for an absolute override and fatal for a multiplier. The site
+is hit repeatedly, so each pass would scale the already-scaled value, compounding
+0.15 to 0.225 to 0.34 and upward without bound.
+
+Both sites are the same five-byte instruction, `F3 0F 10 50 1C`, so the fix is to
+hook both and scale in the register instead. Nothing is written back, the event's
+authored value stays intact, and every pass starts from the same number, so the
+result is idempotent by construction. The absolute path from [TRAFFIC] now works
+the same way, setting the register rather than the field, which also stops it
+permanently modifying loaded game data.
+
+Worth generalising: an in-place multiply at a hook site is only safe if the site
+runs once per value. Check how many times the field is read and written before
+choosing between scaling memory and scaling a register.
+
+## 37. Health logging keyed on the car, not on first sight
+
+A release-candidate run logged the health cap once at the first event and then
+went silent for the rest of the session, including after a stale-chain rejection
+two minutes later. The cap was almost certainly still applying, but the log could
+not show it: the confirmation line was behind a one-shot latch.
+
+That is the wrong shape for the one thing it exists to prove. The interesting
+moment is not the first car of the session, it is every car after a load, which
+is exactly when a stale pointer chain would go unnoticed.
+
+The line is now keyed on the vehicle pointer changing, so each event produces one
+confirmation and nothing repeats while a car is alive. A good read also clears the
+rejection latch, so a genuine failure later in a session is reported rather than
+being swallowed by an earlier transient one.
+
+The rejection itself behaved correctly in that run: the chain resolved to
+0xF3F09B30 while the real car was at 0xDE7ECE60, m_health read 1.09e27, and
+nothing was written.
