@@ -1199,3 +1199,68 @@ being swallowed by an earlier transient one.
 The rejection itself behaved correctly in that run: the chain resolved to
 0xF3F09B30 while the real car was at 0xDE7ECE60, m_health read 1.09e27, and
 nothing was written.
+
+## 38. When there is no log, there is no diagnosis
+
+A tester reported no log file and no menu rename. Those two together are the
+signature of the .asi never running, not of a hook failing: a version mismatch
+still produces a log full of ABORTED lines, and the rename runs regardless of
+difficulty.
+
+It turned out to be antivirus quarantining the .asi, which it did silently. Worth
+recording because a fair amount of effort went into the wrong hypotheses first.
+
+Ruled out along the way: path length. The reported install was about 85 characters
+against a 260 limit, and spaces are irrelevant to fopen.
+
+A fallback chain writing the log to %LOCALAPPDATA% / %APPDATA% / %TEMP% was built
+and then removed. It worked, but it was solving a problem the mod did not have —
+scattering logs into folders nobody would think to look in, to cover a permissions
+case that was never the cause. What was kept is the OutputDebugStringA mirror: if
+the log file cannot be opened, lines still go to the debugger channel where
+DebugView can capture them. That costs a few lines and never moves the log
+somewhere surprising.
+
+## 39. Out-of-bounds reset as a difficulty RELAXATION
+
+Run For Your Life disables the out-of-bounds reset, which runs against everything
+else the mode does. The reasoning is that the mode's other changes narrow the
+player's options — a fragile car, no assists, no drafting, scarce nitrous, faster
+AI — to the point where some events cannot be won on the intended racing line.
+The remaining answer is a creative route, and the OOB volume exists specifically
+to prevent one. Tightening every rule at once does not produce a harder game, it
+produces an unwinnable one; this is the same lesson the nitrous removal taught in
+§21.
+
+Implementation differs from the rest of track_rules.cpp, which patches once at
+init. The difficulty is not known until the player picks one and can change
+between events, so the three bytes at +0x3FAA8C (`fld [ecx+0x68]`) are written
+and restored on transition instead. Cheap because it is a plain NOP with no code
+cave: verify the current bytes, swap, log. Two guards matter — if [TRACK_RULES]
+or the time-of-day feature already disabled the check permanently, the mode
+stands aside rather than restoring it out from under them; and if the bytes ever
+read as something unexpected, the toggle disables itself instead of fighting
+whatever else owns that site every time the difficulty changes.
+
+## 40. Drafting: scaled, after being removed
+
+Drafting was disabled outright for the player in Run For Your Life and that was
+wrong, for exactly the reason the nitrous removal in section 21 was wrong. A core
+mechanic that gets deleted does not raise the skill floor, it lowers the ceiling:
+slipstreaming well means holding a line directly behind a car at speed, and the
+mode was removing the reward for doing it rather than making it harder to earn.
+
+It is now scaled. [esi+2B0h] is multiplied by 0.5 for the player only, so the
+meter builds at half rate, while [esi+2B4h] is left alone so the slingshot pays
+out in full. Twice as long in the slipstream, same reward.
+
+The split is available because the accumulation and the payout are separate
+fields, which the earlier removal work is what established: zeroing 2B0h removed
+drafting entirely, so 2B0h is the input side the game integrates.
+
+Implementation note. The old code was `movl $0, 0x2B0(%esi)`, an immediate store
+needing no register. Scaling needs a second SSE register, since xmm0 already
+holds the draftingSpeed about to be stored, and xmm1 may be live across this site.
+The cave therefore saves xmm1 to the stack with movups, does the multiply, and
+restores it. The x87 and flags constraints already documented for this cave are
+unchanged, and the SSE path touches neither.

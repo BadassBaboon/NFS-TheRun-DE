@@ -16,7 +16,7 @@ namespace Difficulty {
     // The rest of the mode's numbers, arrived at by playing it. Everything here
     // has an equivalent in [VEHICLE] that the player can set for themselves; the
     // mode overrides that while it is engaged.
-    const float kAiSkillScale          = 1.12f;
+    const float kAiSkillScale          = 1.10f;
     const float kAiGlueScale           = 0.97f;
     const float kAiNosRechargeScale    = 2.00f;
     const float kPlayerNosRechargeScale = 0.10f;
@@ -24,6 +24,12 @@ namespace Difficulty {
     // A little more push when you do get to use it, to offset how scarce the bar
     // now is. This is the one thing the mode gives the player rather than takes.
     const float kPlayerNosStrengthScale = 1.12f;
+    // How fast the player's draft meter builds. The slingshot it pays out is NOT
+    // scaled — sit in the slipstream twice as long and you get the same reward.
+    // Drafting was removed outright at one point, which was the nitrous mistake
+    // again: it is a core mechanic, and deleting it removes a skill expression
+    // instead of demanding one.
+    const float kPlayerDraftRateScale   = 0.50f;
     // A MULTIPLIER on whatever ceiling the event was authored with, not a fixed
     // number. A flat 0.25 was tried first and made sparse events as busy as city
     // ones, which took the speed out of the game. Scaling keeps each event's own
@@ -60,12 +66,18 @@ namespace Features {
     // All INI-gated and OFF by default.
     void InitTrackRules();
 
+    // Turns the out-of-bounds reset off while Run For Your Life is engaged, and
+    // puts it back when it is not. Live, because the difficulty is not known at
+    // init and can change between events.
+    void UpdateTrackRules();
+
     // Forces traffic density scale, max density, and vehicle limit. INI-gated, OFF by default.
     void InitTrafficControls();
     void UpdateTrafficControls();
 
-    // Drafting and driving-assist suppression, both PLAYER ONLY. One cave keyed
-    // on the game's own isHumanPlayer flag, so AI cars are never affected.
+    // Player draft rate and driving-assist suppression, both PLAYER ONLY. One
+    // cave keyed on the game's own isHumanPlayer flag, so AI cars are never
+    // affected and keep their full slipstream.
     void InitInputStateHook();
     void UpdateInputState();
 

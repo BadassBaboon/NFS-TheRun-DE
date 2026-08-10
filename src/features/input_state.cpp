@@ -33,16 +33,33 @@
 // player and leaves every AI car untouched.
 //
 // The hook sits on the LAST of those writes, at 0x0069B680. By then all the values
-// have been computed, so a single cave can clear the ones already stored and
-// substitute zero for the draftingSpeed about to be stored. Eight bytes there
+// have been computed, so a single cave can rewrite the ones already stored and
+// substitute its own for the draftingSpeed about to be stored. Eight bytes there
 // leaves room for the 5-byte jump.
 //
-// Two constraints. The x87 stack has a live value pushed at 0x0069B67A and popped
-// at 0x0069B688, so the cave stays off the FPU entirely. Flags are clobbered,
-// which is safe: nothing between here and the function's return reads them.
+// WHY DRAFTING IS SCALED RATHER THAN REMOVED. It was disabled outright first, and
+// that was the same mistake the nitrous work made: drafting is a core mechanic,
+// not a convenience, and taking it away removes a skill expression rather than
+// demanding one. Slipstreaming well means holding a line directly behind a car at
+// speed, which is hard, and the reward for doing it is the slingshot. So the mode
+// halves the rate the draft builds at and leaves the payoff alone. You have to
+// sit in it twice as long to earn the same slingshot.
+//
+// That split works for the same reason the nitrous one does: the accumulation and
+// the payoff are separate fields. [esi+2B0h] is the per-frame draft contribution
+// the game integrates into the meter — zeroing it removed drafting entirely,
+// which is what proves it is the input side — and [esi+2B4h] is left untouched.
+//
+// Three constraints. The x87 stack has a live value pushed at 0x0069B67A and
+// popped at 0x0069B688, so the cave stays off the FPU entirely. Flags are
+// clobbered, which is safe: nothing between here and the function's return reads
+// them. And xmm1 may be live across this site, so scaling — which needs a second
+// SSE register, xmm0 being the draftingSpeed about to be stored — saves and
+// restores it around the multiply rather than assuming it is free.
 
 extern "C" {
-    uint8_t   g_DisableDraft = 0;
+    uint8_t   g_ScaleDraft = 0;
+    float     g_DraftScale = 1.0f;
     uint8_t   g_DisablePlayerAssists = 0;
     uintptr_t g_pInputStateReturn = 0;
     void InputStateHookAsm();
@@ -54,10 +71,15 @@ asm(
     "_InputStateHookAsm:\n"
     "    cmpb $0, 0x102(%esi)\n"              // isHumanPlayer?
     "    je   2f\n"                           // an AI car -> change nothing at all
-    "    cmpb $0, _g_DisableDraft\n"
+    "    cmpb $0, _g_ScaleDraft\n"
     "    je   1f\n"
-    "    xorps %xmm0, %xmm0\n"                // the draftingSpeed about to be stored
-    "    movl $0, 0x2B0(%esi)\n"              // and the drafting value already stored
+    "    subl $16, %esp\n"                    // borrow xmm1, then hand it back
+    "    movups %xmm1, (%esp)\n"
+    "    movss 0x2B0(%esi), %xmm1\n"          // the draft the game just computed
+    "    mulss _g_DraftScale, %xmm1\n"        // built at our rate instead
+    "    movss %xmm1, 0x2B0(%esi)\n"
+    "    movups (%esp), %xmm1\n"
+    "    addl $16, %esp\n"
     "1:\n"
     "    cmpb $0, _g_DisablePlayerAssists\n"
     "    je   2f\n"
@@ -117,19 +139,20 @@ namespace Features {
         if (!g_Installed) return;
 
         // Run For Your Life forces both on while engaged. Outside it the INI
-        // decides, and only the assists are exposed there — drafting is part of
-        // the difficulty rather than something to tune.
+        // decides, and only the assists are exposed there — the draft rate is part
+        // of the difficulty rather than something to tune.
         const bool rfyl = Difficulty::RunForYourLifeActive();
 
         uint8_t draft   = rfyl ? 1 : 0;
         uint8_t assists = (rfyl || g_Config.DisablePlayerAssists) ? 1 : 0;
 
-        g_DisableDraft = draft;
+        g_DraftScale = Difficulty::kPlayerDraftRateScale;
+        g_ScaleDraft = draft;
         g_DisablePlayerAssists = assists;
 
         Report(draft, g_LastDraft, g_LoggedDraft,
-               "Drafting disabled for the player. AI cars keep their slipstream.",
-               "Drafting restored.");
+               "Player draft rate scaled. AI cars keep their full slipstream.",
+               "Draft rate restored.");
         Report(assists, g_LastAssists, g_LoggedAssists,
                "Driving assists disabled for the player. AI cars keep theirs.",
                "Driving assists restored.");

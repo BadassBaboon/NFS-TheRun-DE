@@ -48,21 +48,37 @@ road segments. Clearing the render target each frame fixes it.
 Extreme difficulty in The Run mostly means quicker AI. Pick Extreme with this on
 and the mod recognises it and changes the rules: the difficulty is renamed to
 **DEADLY** in the menus, your car is capped to half its health, nitrous stops
-filling on its own, drafting and the driving assists are stripped from your car,
-and the AI is scaled up. The one thing it hands back is a little more nitrous
+filling on its own, drafting builds at half rate, the driving assists are
+stripped from your car, and the AI is scaled up. The one thing it hands back is a little more nitrous
 punch when you do earn a bar.
 
-Every one of those removals is **player-only**. AI cars keep their drafting,
-their assists, and get twice the nitrous recharge. That distinction is the whole
+Every one of those changes is **player-only**. AI cars keep their full
+slipstream, their assists, and get twice the nitrous recharge. That distinction is the whole
 design, and it is not decorative: the community cheat-table assist patches turned
 out to degrade AI cars more than the player's, so switching them on made races
 easier. Anything this mode takes away, it takes from you alone.
+
+It also turns the out-of-bounds reset off, which is the one rule it relaxes
+rather than tightens. With the AI quicker and your car fragile, some events are
+close enough that the racing line alone will not win them, and the answer has to
+be a better line — a cut corner, a crossed median, a route the event never
+anticipated. The out-of-bounds volume punishes exactly that, so leaving it on
+would close off the only option the mode leaves open. It comes back on every
+other difficulty.
 
 It also doubles each event's traffic density ceiling, without touching the density
 the game picks per event. A fixed value was tried first and was wrong:
 forcing every event to the same ceiling made sparse stretches as congested as city
 ones, and traffic that thick takes the speed out of the game. Multiplying keeps
 each event's own character and makes the busy ones busier.
+
+**Drafting is slowed, not removed.** It was disabled outright first, which was
+the nitrous mistake in miniature: drafting is a core mechanic, and deleting it
+removes a way to show skill instead of demanding one. The meter now builds at
+half rate while the slingshot it pays out is untouched, so the same reward costs
+twice as long held square behind a car at speed. The two halves can be separated
+because they are separate fields — the per-frame draft contribution the game
+integrates into the meter is what zeroing removed, and the payout is elsewhere.
 
 **Nitrous is earned, not removed.** An earlier version disabled it outright and
 that was a mistake, because several timed and chase events are close to
@@ -170,6 +186,12 @@ flags register entirely.
 
 Turn on `DebugLog` and read `NFSTR_DefinitiveEdition.log` if something looks
 wrong. It records every patch, every address, and the bytes that were there.
+
+The log is written next to the `.asi`, and if that file cannot be opened at all
+every line goes to the debugger output instead, where DebugView will capture it.
+**No log either way means the `.asi` was never loaded**, which is a loader or
+install problem rather than a mod one. Antivirus quarantining the file is the
+usual cause, and it does it silently.
 
 ## Known limitations
 
