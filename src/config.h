@@ -61,6 +61,9 @@ struct ConfigStruct {
     float PlayerNosBonusScale    = 1.0f;
     float PlayerNosStrengthScale = 1.0f;
     float PlayerNosBoostScale    = 1.0f;
+    // How fast the player's draft meter builds. Below 1.0 is slower to earn,
+    // above 1.0 is faster. Does NOT touch the slingshot the draft pays out.
+    float PlayerDraftRateScale   = 1.0f;
 
     // [HIGH_FPS_FIXES]
     // Fixes the engine-audio pitch above 30 FPS. 1 = snap (recommended),

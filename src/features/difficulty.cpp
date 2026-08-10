@@ -91,8 +91,8 @@ namespace Features {
         bool shouldBeActive = (difficulty == kDifficultyExpert);
         if (shouldBeActive != g_Active) {
             Logger::Log(shouldBeActive
-                        ? "RUN FOR YOUR LIFE engaged: health capped at %.0f, drafting and player "
-                          "assists disabled, AI scaled up, [VEHICLE] ignored."
+                        ? "RUN FOR YOUR LIFE engaged: health capped at %.0f, draft rate halved, "
+                          "player assists off, OOB reset off, AI scaled up, [VEHICLE] ignored."
                         : "Run For Your Life disengaged: [VEHICLE] applies again.",
                         Difficulty::kHealthCap);
             g_Active = shouldBeActive;

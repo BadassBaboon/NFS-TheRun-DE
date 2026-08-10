@@ -167,6 +167,7 @@ namespace {
     bool g_Installed = false;
     bool g_Logged = false;
     float g_LastRecharge = -1.0f, g_LastStrength = -1.0f, g_LastAi = -1.0f;
+    float g_LastBonus = -1.0f;
     float g_LastReportedAward = -1.0f;
 
     // Watches the four recharge inputs on the player's own input state.
@@ -278,7 +279,8 @@ namespace Features {
             WatchRechargeFields();
         }
 
-        if ((recharge != g_LastRecharge || strength != g_LastStrength || ai != g_LastAi)
+        if ((recharge != g_LastRecharge || strength != g_LastStrength
+             || bonus != g_LastBonus || ai != g_LastAi)
             && (g_Logged || rfyl)) {
             Logger::Log("NOS tuning: player recharge x%.2f, bonus x%.2f, strength x%.2f, "
                         "AI recharge %.2f.", recharge, bonus, strength, ai);
@@ -286,6 +288,7 @@ namespace Features {
         }
         g_LastRecharge = recharge;
         g_LastStrength = strength;
+        g_LastBonus = bonus;
         g_LastAi = ai;
     }
 }

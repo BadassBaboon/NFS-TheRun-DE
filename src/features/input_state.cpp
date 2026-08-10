@@ -97,7 +97,7 @@ namespace {
 
     bool g_Installed = false;
 
-    uint8_t g_LastDraft   = 0xFF;
+    float   g_LastDraftScale = -1.0f;
     uint8_t g_LastAssists = 0xFF;
     bool    g_LoggedDraft = false;
     bool    g_LoggedAssists = false;
@@ -117,7 +117,8 @@ namespace {
 namespace Features {
     void InitInputStateHook() {
         // Nothing that uses this is switched on, so leave the game's code alone.
-        if (!g_Config.RunForYourLife && !g_Config.DisablePlayerAssists) return;
+        if (!g_Config.RunForYourLife && !g_Config.DisablePlayerAssists
+            && g_Config.PlayerDraftRateScale == 1.0f) return;
 
         uintptr_t addr = Memory::GetGameBase() + kSite;
         if (!Memory::VerifyBytes(addr, kExpect, sizeof(kExpect))) {
@@ -139,20 +140,31 @@ namespace Features {
         if (!g_Installed) return;
 
         // Run For Your Life forces both on while engaged. Outside it the INI
-        // decides, and only the assists are exposed there — the draft rate is part
-        // of the difficulty rather than something to tune.
+        // decides, and the mode overrides whatever [VEHICLE] asked for rather
+        // than combining with it — the same rule the rest of the mode follows.
         const bool rfyl = Difficulty::RunForYourLifeActive();
 
-        uint8_t draft   = rfyl ? 1 : 0;
-        uint8_t assists = (rfyl || g_Config.DisablePlayerAssists) ? 1 : 0;
+        float   draftScale = rfyl ? Difficulty::kPlayerDraftRateScale
+                                  : g_Config.PlayerDraftRateScale;
+        uint8_t assists    = (rfyl || g_Config.DisablePlayerAssists) ? 1 : 0;
 
-        g_DraftScale = Difficulty::kPlayerDraftRateScale;
-        g_ScaleDraft = draft;
+        // A scale of exactly 1.0 means the cave leaves the field alone entirely,
+        // rather than multiplying by one — so a disengaged mode is byte-for-byte
+        // the stock game, not an arithmetic no-op that could still round.
+        g_DraftScale = draftScale;
+        g_ScaleDraft = (draftScale != 1.0f) ? 1 : 0;
         g_DisablePlayerAssists = assists;
 
-        Report(draft, g_LastDraft, g_LoggedDraft,
-               "Player draft rate scaled. AI cars keep their full slipstream.",
-               "Draft rate restored.");
+        if (draftScale != g_LastDraftScale && (g_LoggedDraft || draftScale != 1.0f)) {
+            if (draftScale == 1.0f) {
+                Logger::Log("Player draft rate restored to stock.");
+            } else {
+                Logger::Log("Player draft rate x%.2f. The slingshot it pays out is "
+                            "unscaled, and AI cars keep their full slipstream.", draftScale);
+            }
+            g_LoggedDraft = true;
+        }
+        g_LastDraftScale = draftScale;
         Report(assists, g_LastAssists, g_LoggedAssists,
                "Driving assists disabled for the player. AI cars keep theirs.",
                "Driving assists restored.");

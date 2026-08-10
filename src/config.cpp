@@ -48,6 +48,7 @@ namespace Config {
         g_Config.PlayerNosBonusScale    = ReadIniFloat("VEHICLE", "PlayerNosBonusScale",    1.0f, iniPath);
         g_Config.PlayerNosStrengthScale = ReadIniFloat("VEHICLE", "PlayerNosStrengthScale", 1.0f, iniPath);
         g_Config.PlayerNosBoostScale    = ReadIniFloat("VEHICLE", "PlayerNosBoostScale",    1.0f, iniPath);
+        g_Config.PlayerDraftRateScale   = ReadIniFloat("VEHICLE", "PlayerDraftRateScale",   1.0f, iniPath);
 
         g_Config.FixEngineAudioSlew    = GetPrivateProfileIntA("HIGH_FPS_FIXES", "FixEngineAudioSlew",    1, iniPath);
         g_Config.FixKickupParticles     = GetPrivateProfileIntA("HIGH_FPS_FIXES", "FixKickupParticles", 1, iniPath);
@@ -94,6 +95,7 @@ namespace Config {
         Logger::Log("  PlayerNos: Recharge=%.2f  Bonus=%.2f  Strength=%.2f  Boost=%.2f",
             g_Config.PlayerNosRechargeScale, g_Config.PlayerNosBonusScale,
             g_Config.PlayerNosStrengthScale, g_Config.PlayerNosBoostScale);
+        Logger::Log("  PlayerDraftRateScale=%.2f", g_Config.PlayerDraftRateScale);
         Logger::Log("  EnableRenderTweaks=%d  ForceFov=%.1f  FovDrivingOnly=%d  ForceRenderShiftEnabled=%d  ShiftX=%.3f  ShiftY=%.3f  ForceRoll=%.3f  FixMinimapRendering=%d",
             g_Config.EnableRenderTweaks, g_Config.ForceFov, g_Config.ForceFovOnlyWhileDriving, g_Config.ForceRenderShiftEnabled,
             g_Config.ForceRenderShiftX, g_Config.ForceRenderShiftY, g_Config.ForceRoll, g_Config.FixMinimapRendering);
