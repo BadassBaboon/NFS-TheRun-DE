@@ -40,6 +40,15 @@ prompts expire almost five times too quickly. The mod drops the simulation to 30
 whenever you have no control of the car, which is exactly when QTEs and cutscenes
 play, and restores your target framerate the moment you are driving.
 
+`UnlockCutsceneFPS` trades that fix for smooth cutscenes, and is off by default.
+The engine's only lever here is the variable sim tick, which is what breaks
+physics, audio and input at high framerates — so rather than switching it on, the
+mod enables it *only* while you have no vehicle control and clears it the instant
+you do. A variable step can only corrupt a car being simulated under your
+control, and during a cutscene or the car select there is not one. Driving keeps
+its fixed 30 Hz step either way; QTEs are the one casualty, since they share the
+no-control window.
+
 **Minimap rendering.** On some events it comes up glitchy, invisible, or missing
 road segments. Clearing the render target each frame fixes it.
 
@@ -76,7 +85,10 @@ each event's own character and makes the busy ones busier.
 the nitrous mistake in miniature: drafting is a core mechanic, and deleting it
 removes a way to show skill instead of demanding one. The meter now builds at
 half rate while the slingshot it pays out is untouched, so the same reward costs
-twice as long held square behind a car at speed. The two halves can be separated
+twice as long held square behind a car at speed. The *nitrous* a draft earns is
+halved along with it — that reward is computed from the same field — which is
+consistent enough to leave alone: twice as long in the slipstream, same total.
+Near misses and the oncoming lane are unaffected. The two halves can be separated
 because they are separate fields — the per-frame draft contribution the game
 integrates into the meter is what zeroing removed, and the payout is elsewhere.
 
@@ -85,7 +97,10 @@ that was a mistake, because several timed and chase events are close to
 unwinnable without it. Instead the passive refill runs at a tenth of stock while
 the reward for a near miss, an oncoming pass or a draft pays what it always did.
 The bar stops filling while you drive carefully and fills fast when you take
-risks. That split works because the game keeps the reward in a separate value
+risks. The reward scale is derived as `1 / recharge` rather than tuned by hand,
+because the game computes recharge as `(base + bonus) * scalar` — turning the
+scalar down turns the reward down with it, and that one ratio cancels it back out
+exactly. That split works because the game keeps the reward in a separate value
 from the refill rate, which the field diagnostic in `docs/RESEARCH.md` pinned down
 by watching it pulse to 3.0 on every near miss.
 

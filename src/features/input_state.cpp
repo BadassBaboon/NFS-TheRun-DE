@@ -129,7 +129,7 @@ namespace Features {
 
         g_pInputStateReturn = addr + sizeof(kExpect);
         if (Memory::InjectJMP(addr, reinterpret_cast<uintptr_t>(InputStateHookAsm), sizeof(kExpect))) {
-            Logger::Log("Input-state hook installed at 0x%08X (drafting and player assists).", addr);
+            Logger::Log("Input-state hook installed at 0x%08X (draft rate and player assists).", addr);
             g_Installed = true;
         } else {
             Logger::Log("Input-state hook FAILED at 0x%08X.", addr);

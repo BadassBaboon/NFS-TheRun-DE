@@ -1264,3 +1264,102 @@ holds the draftingSpeed about to be stored, and xmm1 may be live across this sit
 The cave therefore saves xmm1 to the stack with movups, does the multiply, and
 restores it. The x87 and flags constraints already documented for this cave are
 unchanged, and the SSE path touches neither.
+
+## 41. The field watch was reading AI cars
+
+A DEADLY run with LogNosAwards on produced mostly correct samples —
+scalar=0.1000, strength=1.1200, exactly the mode's 0.10 and 1.12 against a base
+of 1.0 — with occasional lines reading:
+
+    scalar=1.0000  strength=1.0000
+    scalar=2.0000  strength=1.0000
+
+Neither is reachable for the player. The player hook multiplies strength by 1.12
+unconditionally, so a player sample always reads 1.12; and 2.0 is exactly
+kAiNosRechargeScale. The diagnostic was sampling AI cars.
+
+The hooks themselves were fine, and the 2.0 is what proves it: the AI branch was
+getting its constant and the player branch its 0.1, separately, which is the whole
+design. The fault was in WatchRechargeFields. It reads g_pPlayerInputState from
+the ticker thread while the game thread is running collectRaceCarInputState for
+every vehicle in turn, and the game reuses that struct, so a pointer captured in
+the player branch describes whatever car was processed most recently by the time
+the ticker samples it. The scalar flapping between 0.1 and 0.0 in the same log is
+the same race caught mid-write.
+
+Fixed by re-checking [esi+102h] on every sample rather than trusting the capture
+site. This is worth recording because it is the fourth appearance of the same bug
+class in this project, and the first where it hit the diagnostic instead of the
+gameplay: a value read without asking whose car it belongs to. Here it was only
+misleading. The three before it were handing the player an advantage.
+
+## 42. The draft/nitrous coupling, settled
+
+Section 40 left open whether halving the draft rate also halves the nitrous a
+draft earns. It does, and the evidence was already in hand: when the mode
+disabled drafting outright, the player reported that drafting stopped paying any
+nitrous reward. Zeroing [esi+2B0h] killed the reward, so the reward is computed
+from that field. Scaling it to 0.5 halves it.
+
+Left as is. Twice as long in the slipstream for the same total nitrous is
+consistent with what the draft-rate change is for, and near misses and the
+oncoming lane are unaffected and still pay in full.
+
+Worth noting how this was answered. The frame ordering argument in section 40 —
+bonus stored at 0x69B5FB, drafting at 0x69B65C, so the bonus cannot read this
+frame's value — was correct and useless: it ruled out the same-frame path and
+said nothing about the previous frame's, which is what the game actually uses. A
+negative result from play-testing settled in one sentence what static reading
+could not.
+
+## 43. Recharge and reward are one dial, not two
+
+The recharge is (base + bonus) * scalar. Turning the scalar down to make nitrous
+scarce turns the REWARD down by the same factor, which is the opposite of what
+the reward scale is for. The cancellation is exact rather than approximate:
+
+    reward contribution = bonus_raw * bonusScale * scalar
+
+so bonusScale = 1/scalar leaves it at bonus_raw, exactly stock, for any scalar.
+
+kPlayerNosBonusScale is therefore derived as 1.0f / kPlayerNosRechargeScale in
+features.h rather than written out as a number. The old pair (0.10 and 10.0)
+happened to satisfy this, which hid the relationship and made the two look like
+independent taste dials — a later change to one alone would silently have moved
+the payout. At 0.12 the partner is 8.333, which nobody would have picked by hand.
+
+## 44. UnlockCutsceneFPS, scoped instead of refused
+
+UnlockCutsceneFPS wrote 1 to g_pSimTickEnable and never cleared it. That field is
+VariableSimTickEnable — not something that behaves like it, the same field — so
+turning the option on put the WHOLE GAME on a variable simulation step from the
+first cutscene onward. A player reported it breaking input and the camera exactly
+the way the variable tick does, which is because it was the variable tick.
+
+The first fix was to refuse the option while ClampSimRateWhenNoControl was on,
+since the two contradict each other. That was wrong, or at least lazy: it treated
+a scoping bug as an incompatibility and threw the feature away.
+
+The right shape came from the player. The variable step is only destructive when
+there is a car under the player's control to corrupt; during a cutscene, the
+garage or the car select there is not one. So the tick is now enabled only while
+the control flag reads no-control and cleared the moment it returns. The control
+hook that the sim-rate clamp already installs provides the signal, so this needs
+no new hook — only the discipline of writing the field both ways instead of once.
+
+Two consequences worth stating plainly.
+
+It necessarily overrides the clamp for the same window, because both target
+no-control moments and want opposite things. Applying both would just let the
+clamp win and hold cutscenes at 30.
+
+QTEs are no-control moments too, so they run unlocked and their prompts time out
+faster. This is the QTE fix being traded away, not a bug. Play-testing called
+them still playable, just less forgiving, which is what makes the trade offerable
+at all. It ships off.
+
+Open question worth a test: whether the variable tick is needed for this at all.
+Driving already runs at 144 with the tick OFF, so the fixed step does not cap the
+render rate — which raises the possibility that cutscenes are held at 30 only by
+our own clamp, and that skipping the clamp alone would be enough. If so the tick
+write could be dropped entirely and the QTE cost would be the only remaining one.

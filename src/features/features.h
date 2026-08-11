@@ -19,8 +19,14 @@ namespace Difficulty {
     const float kAiSkillScale          = 1.10f;
     const float kAiGlueScale           = 0.97f;
     const float kAiNosRechargeScale    = 2.00f;
-    const float kPlayerNosRechargeScale = 0.10f;
-    const float kPlayerNosBonusScale    = 10.0f;
+    const float kPlayerNosRechargeScale = 0.12f;
+    // The recharge is (base + bonus) * scalar, so turning the scalar down turns
+    // the REWARD down with it. Cancelling that is not a taste call, it is
+    // arithmetic: a bonus scale of exactly 1/scalar leaves a near miss, an
+    // oncoming pass or a draft paying what it pays in the stock game, while the
+    // passive trickle stays at whatever the scalar says. Derived from the scalar
+    // rather than written out so the two can never drift apart.
+    const float kPlayerNosBonusScale    = 1.0f / kPlayerNosRechargeScale;
     // A little more push when you do get to use it, to offset how scarce the bar
     // now is. This is the one thing the mode gives the player rather than takes.
     const float kPlayerNosStrengthScale = 1.12f;

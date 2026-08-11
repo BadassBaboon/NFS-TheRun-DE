@@ -65,6 +65,7 @@ static bool g_LogCapturedHook = false;
 static bool g_LogCapturedControl = false;
 static int  g_LastControlState = -1;   // -1 unknown, 0 no control, 1 has control
 static bool g_WarnedStaleControl = false;
+static bool g_WarnedCutsceneConflict = false;
 static float g_LastLoggedFps = 0.0f;
 static uint32_t g_LastLoggedTickEnable = 999;
 
@@ -126,6 +127,17 @@ namespace Features {
     static void InstallControlHook() {
         uintptr_t ctlAddr = Memory::GetGameBase() + 0x3F6C73;
 
+        // Say what this flag is actually being used for. Three different settings
+        // want it and they are not interchangeable, so a message that always
+        // claims "sim-rate clamp" is wrong two thirds of the time — and wrong
+        // exactly when someone is reading the log to find out why the clamp is
+        // not behaving.
+        const char* purpose = g_Config.ClampSimRateWhenNoControl
+                            ? (g_Config.UnlockCutsceneFPS ? "sim-rate clamp + cutscene unlock"
+                                                          : "sim-rate clamp")
+                            : (g_Config.UnlockCutsceneFPS ? "cutscene unlock"
+                                                          : "driving-only FOV");
+
         // Expected stolen bytes: cmp byte ptr [esi+04],00 ; push edi
         const uint8_t ctlExpected[5] = { 0x80, 0x7E, 0x04, 0x00, 0x57 };
         std::string ctlBytes = Memory::BytesToHex(ctlAddr, 5);
@@ -138,7 +150,8 @@ namespace Features {
             g_pControlChainTarget = ctlAddr + 5 + rel;
             if (Memory::InjectJMP(ctlAddr, reinterpret_cast<uintptr_t>(ControlChainHookAsm), 5)) {
                 Logger::Log("Control-check hook CHAINED at 0x%08X onto existing stub 0x%08X "
-                            "(coexisting with another mod, sim-rate clamp enabled).", ctlAddr, g_pControlChainTarget);
+                            "(coexisting with another mod, for: %s).",
+                            ctlAddr, g_pControlChainTarget, purpose);
             } else {
                 Logger::Log("Control-check chain hook failed at 0x%08X", ctlAddr);
             }
@@ -146,7 +159,8 @@ namespace Features {
             // Still clean after the delay: no other mod present, safe to hook directly.
             g_pControlReturn = ctlAddr + 5;
             if (Memory::InjectJMP(ctlAddr, reinterpret_cast<uintptr_t>(ControlCheckHookAsm), 5)) {
-                Logger::Log("Control-check hook injected at 0x%08X (clean site, sim-rate clamp enabled).", ctlAddr);
+                Logger::Log("Control-check hook injected at 0x%08X (clean site, for: %s).",
+                            ctlAddr, purpose);
             } else {
                 Logger::Log("Control-check hook failed at 0x%08X", ctlAddr);
             }
@@ -161,6 +175,7 @@ namespace Features {
         // The sim-rate clamp and the driving-only FOV override both gate on the
         // vehicle-control flag this hook captures.
         bool needControlHook = g_Config.ClampSimRateWhenNoControl
+                            || g_Config.UnlockCutsceneFPS
                             || (g_Config.EnableRenderTweaks && g_Config.ForceFovOnlyWhileDriving
                                 && g_Config.ForceFov > 0.0f);
         if (g_FrameUnlockerActive && needControlHook && !g_ControlHookAttempted
@@ -212,16 +227,56 @@ namespace Features {
             } else {
                 int hasControl = (ctlByte != 0) ? 1 : 0;
                 if (hasControl != g_LastControlState) {
-                    Logger::Log("Vehicle control changed: PlayerHasVehicleControl=%u -> %s sim rate",
-                                ctlByte, hasControl ? "restoring target" : "clamping to 30");
+                    // Report what will actually happen, not what the clamp would
+                    // do if it were on. These three settings produce three
+                    // different responses to the same transition.
+                    const char* effect;
+                    if (hasControl) {
+                        effect = "driving, fixed sim step at the target framerate";
+                    } else if (g_Config.UnlockCutsceneFPS) {
+                        effect = "no control, unlocking (variable sim tick on)";
+                    } else if (g_Config.ClampSimRateWhenNoControl) {
+                        effect = "no control, clamping to 30";
+                    } else {
+                        effect = "no control, sim rate left alone";
+                    }
+                    Logger::Log("Vehicle control changed: PlayerHasVehicleControl=%u -> %s.",
+                                ctlByte, effect);
                     g_LastControlState = hasControl;
                 }
                 g_WarnedStaleControl = false;
             }
         }
 
-        // Unknown state (-1) leaves the target framerate alone rather than guessing.
-        if (g_Config.ClampSimRateWhenNoControl && g_LastControlState == 0) {
+        // Unknown state (-1) counts as "driving" everywhere below, which is the
+        // safe reading: it keeps the fixed sim step rather than guessing that
+        // nothing is being simulated.
+        const bool noControl = (g_LastControlState == 0);
+
+        // Cutscene unlock, scoped to the no-control window.
+        //
+        // The variable sim tick is only destructive when there is a car under the
+        // player's control to corrupt. During a cutscene, the car select or the
+        // garage there is not one, so the engine note, the tyre spray and the
+        // handling cannot be affected by a variable step — there is no driving
+        // happening to affect. Confining it to those moments is what makes this
+        // safe, and it is why the option is gated on the control flag rather than
+        // set once and left on. Every frame of actual driving keeps the fixed 30 Hz
+        // step the game was tuned against.
+        //
+        // It REPLACES the clamp during that window rather than running alongside
+        // it. Both target exactly the same moments and want opposite things — the
+        // clamp pulls the rate to 30, this leaves it at the target — so with both
+        // applied the clamp would simply win and cutscenes would stay at 30.
+        //
+        // THE COST is the QTE fix, which is the clamp. Prompts count down against
+        // a 30 FPS frame time, so at the target framerate they expire faster and
+        // the timing is tighter. Play-testing found them still playable, just less
+        // forgiving. That is a real trade rather than a free win, which is why this
+        // ships off.
+        const bool cutsceneUnlock = g_Config.UnlockCutsceneFPS && noControl;
+
+        if (g_Config.ClampSimRateWhenNoControl && noControl && !cutsceneUnlock) {
             targetFps = kBaseSimRate;
         }
 
@@ -229,11 +284,22 @@ namespace Features {
             *pMaxVariableFps = targetFps;
         }
 
-        // Cutscene unlock: force the variable sim tick on so cutscenes and menus
-        // are not held to 30.
+        // The field is only ever written when the option is on, and it is driven
+        // back to 0 the moment control returns rather than left set. An earlier
+        // version set it once and never cleared it, which is why enabling this
+        // used to break driving: the whole game ran on a variable step from the
+        // first cutscene onwards. Writing it unconditionally is also avoided, so
+        // with the option off the game owns the field exactly as it always did.
         if (g_Config.UnlockCutsceneFPS) {
-            if (*g_pSimTickEnable != 1) {
-                *g_pSimTickEnable = 1;
+            const uint32_t want = cutsceneUnlock ? 1u : 0u;
+            if (*g_pSimTickEnable != want) {
+                *g_pSimTickEnable = want;
+            }
+            if (!g_WarnedCutsceneConflict) {
+                Logger::Log("UnlockCutsceneFPS is ON: the variable sim tick is enabled only while "
+                            "you have no vehicle control, so driving keeps its fixed 30 Hz step. "
+                            "QTE prompts run at the target framerate and time out faster.");
+                g_WarnedCutsceneConflict = true;
             }
         }
 

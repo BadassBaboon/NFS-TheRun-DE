@@ -49,9 +49,19 @@
 // The recharge appears to be (base + bonus) * scalar rather than
 // base * scalar + bonus, because dropping the scalar to 0 killed the reward NOS
 // as well as the passive fill. That is why raising the bonus is the way to keep
-// rewards intact while the trickle is turned down: at scalar 0.1, a bonus scale
-// of 10 restores roughly the stock payout for a near miss while passive
-// accumulation stays at a tenth.
+// rewards intact while the trickle is turned down. The two are not independent
+// dials: a bonus scale of exactly 1/scalar cancels the scalar out of the reward
+// term, so a near miss pays what it pays in the stock game while passive
+// accumulation stays at whatever the scalar says. The mode derives one from the
+// other for that reason rather than tuning them separately.
+//
+// DRAFTING IS COUPLED TO THIS. The risky-driving reward for a slipstream is
+// computed from the drafting field that input_state.cpp scales, which was
+// established by accident: when the mode disabled drafting outright, the nitrous
+// reward for drafting disappeared with it. So halving the draft rate also halves
+// draft-earned nitrous. That is left as it is, and it is consistent — twice as
+// long in the slipstream for the same total. Near misses and the oncoming lane
+// are unaffected and still pay in full.
 //
 // AI HOOK, 0x0069B60F, eight bytes. Substitutes our own constant for the 1.0 the
 // game loads. The store that follows is left alone and writes whatever we put in
@@ -180,6 +190,16 @@ namespace {
     //
     // The values are read from the ticker rather than the detour, so the pointer
     // is range-checked every time: it is only as valid as the object behind it.
+    //
+    // It also has to re-check isHumanPlayer on every sample, not just trust that
+    // the pointer was captured in the player branch. The game reuses this struct
+    // for every vehicle it processes, so between the capture and the read the
+    // object behind the pointer may have become an AI car. A run caught it doing
+    // exactly that: samples reading strength=1.0000 when the player hook always
+    // leaves 1.12 there, and scalar=2.0000, which is the AI recharge constant.
+    // Those readings were correct about the car they described and wrong about
+    // whose car it was — the same confusion the player/AI split exists to end.
+    const uintptr_t kOffIsHumanPlayer    = 0x102;
     const uintptr_t kOffRechargeOverride = 0x29C;
     const uintptr_t kOffRechargeBonus    = 0x2A0;
     const uintptr_t kOffRechargeScalar   = 0x2A4;
@@ -190,7 +210,12 @@ namespace {
     void WatchRechargeFields() {
         uintptr_t s = g_pPlayerInputState;
         if (s < 0x10000) return;
+        if (!Memory::IsReadable(s + kOffIsHumanPlayer, sizeof(uint8_t))) return;
         if (!Memory::IsReadable(s + kOffRechargeOverride, 4 * sizeof(float))) return;
+
+        // Not the player's car any more. Skip rather than report an AI car's
+        // nitrous economy under a heading that says "player".
+        if (*reinterpret_cast<uint8_t*>(s + kOffIsHumanPlayer) == 0) return;
 
         const uintptr_t offs[4] = { kOffRechargeOverride, kOffRechargeBonus,
                                     kOffRechargeScalar, kOffStrengthScalar };
