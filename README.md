@@ -43,11 +43,13 @@ play, and restores your target framerate the moment you are driving.
 `UnlockCutsceneFPS` trades that fix for smooth cutscenes, and is off by default.
 The engine's only lever here is the variable sim tick, which is what breaks
 physics, audio and input at high framerates — so rather than switching it on, the
-mod enables it *only* while you have no vehicle control and clears it the instant
-you do. A variable step can only corrupt a car being simulated under your
-control, and during a cutscene or the car select there is not one. Driving keeps
-its fixed 30 Hz step either way; QTEs are the one casualty, since they share the
-no-control window.
+mod enables it only after control has been gone for a second and a half, and
+clears it the instant control returns. The delay matters: losing control is not
+the same as nothing being simulated, and a wreck hands control away while your car
+is still tumbling — on a variable step that spectacular crash flattens into a
+gentle slide. Crashes are brief and cutscenes are not, so the wait separates them.
+Driving keeps its fixed 30 Hz step regardless; QTEs are the real casualty, since
+a long one shares the no-control window.
 
 **Minimap rendering.** On some events it comes up glitchy, invisible, or missing
 road segments. Clearing the render target each frame fixes it.

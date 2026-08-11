@@ -66,6 +66,29 @@ static bool g_LogCapturedControl = false;
 static int  g_LastControlState = -1;   // -1 unknown, 0 no control, 1 has control
 static bool g_WarnedStaleControl = false;
 static bool g_WarnedCutsceneConflict = false;
+
+// When the no-control window began, for the cutscene-unlock dwell below.
+static DWORD g_NoControlSince = 0;
+
+// How long no-control has to persist before the variable sim tick is allowed.
+//
+// "No control" is NOT the same as "no car is being simulated", which is what the
+// unlock actually requires. A head-to-head wreck takes control away and then
+// simulates your car tumbling through the air — that is physics, and running it
+// on a variable step at 144 flattens it into a gentle slide instead of the
+// dramatic crash the game authored at 30. It was reported exactly that way.
+//
+// Crash and takedown windows are short and often flicker (a real log showed
+// control going 1 -> 0 -> 1 inside two seconds). Cutscenes, menus, the garage and
+// the car select last far longer. So the tick waits for the window to prove
+// itself before switching, and a crash never survives the wait.
+//
+// This is a heuristic and worth naming as one. The principled version keys on
+// whether the player's vehicle is actually being simulated rather than on how
+// long control has been gone; that needs a signal we do not have yet. The cost of
+// this one is that a genuine cutscene spends its first second and a half at 30
+// before unlocking.
+static const DWORD kCutsceneDwellMs = 1500;
 static float g_LastLoggedFps = 0.0f;
 static uint32_t g_LastLoggedTickEnable = 999;
 
@@ -243,6 +266,9 @@ namespace Features {
                     Logger::Log("Vehicle control changed: PlayerHasVehicleControl=%u -> %s.",
                                 ctlByte, effect);
                     g_LastControlState = hasControl;
+                    // Restart the dwell on every entry into no-control, so a crash
+                    // that briefly drops control cannot inherit a cutscene's credit.
+                    if (!hasControl) g_NoControlSince = GetTickCount();
                 }
                 g_WarnedStaleControl = false;
             }
@@ -274,7 +300,9 @@ namespace Features {
         // the timing is tighter. Play-testing found them still playable, just less
         // forgiving. That is a real trade rather than a free win, which is why this
         // ships off.
-        const bool cutsceneUnlock = g_Config.UnlockCutsceneFPS && noControl;
+        const bool dwellMet = noControl
+                           && (GetTickCount() - g_NoControlSince) >= kCutsceneDwellMs;
+        const bool cutsceneUnlock = g_Config.UnlockCutsceneFPS && dwellMet;
 
         if (g_Config.ClampSimRateWhenNoControl && noControl && !cutsceneUnlock) {
             targetFps = kBaseSimRate;
@@ -296,9 +324,10 @@ namespace Features {
                 *g_pSimTickEnable = want;
             }
             if (!g_WarnedCutsceneConflict) {
-                Logger::Log("UnlockCutsceneFPS is ON: the variable sim tick is enabled only while "
-                            "you have no vehicle control, so driving keeps its fixed 30 Hz step. "
-                            "QTE prompts run at the target framerate and time out faster.");
+                Logger::Log("UnlockCutsceneFPS is ON: the variable sim tick is enabled only after "
+                            "%lu ms without vehicle control, so driving and crash physics keep "
+                            "their fixed 30 Hz step. QTE prompts run at the target framerate and "
+                            "time out faster.", static_cast<unsigned long>(kCutsceneDwellMs));
                 g_WarnedCutsceneConflict = true;
             }
         }

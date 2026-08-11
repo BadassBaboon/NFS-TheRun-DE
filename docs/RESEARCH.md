@@ -1358,8 +1358,46 @@ faster. This is the QTE fix being traded away, not a bug. Play-testing called
 them still playable, just less forgiving, which is what makes the trade offerable
 at all. It ships off.
 
-Open question worth a test: whether the variable tick is needed for this at all.
-Driving already runs at 144 with the tick OFF, so the fixed step does not cap the
-render rate — which raises the possibility that cutscenes are held at 30 only by
-our own clamp, and that skipping the clamp alone would be enough. If so the tick
-write could be dropped entirely and the QTE cost would be the only remaining one.
+ANSWERED. The hypothesis was that cutscenes might be held at 30 only by our own
+clamp, since driving already reaches 144 with the tick off — in which case the
+tick write would be redundant. It is not. Measured on the same cutscene with the
+clamp off both times:
+
+    UnlockCutsceneFPS = 0   ->   30 FPS
+    UnlockCutsceneFPS = 1   ->  144 FPS
+
+The game caps cutscenes independently of anything the mod does, and the variable
+sim tick is the only lever that lifts it.
+
+## 45. "No control" is not "nothing is being simulated"
+
+The scoped cutscene unlock in section 44 rested on the premise that a variable sim
+step can only damage a car being simulated under the player's control, so a
+no-control window is safe. Play-testing broke the premise.
+
+Head-to-head wrecks came out wrong. At a fixed 30 the car launches into a violent
+mid-air tumble; with the unlock active it merely got damaged and slid along the
+ground, described as looking like a 20 mph knock. The log shows why:
+
+    14:58:02  control=1 -> driving, tick 0
+    14:58:03  control=0 -> no control, tick 1
+    14:58:04  control=1 -> driving, tick 0
+
+A wreck takes control away and then simulates the crash. That is physics, in a
+no-control window — exactly the case the premise said could not exist. Takedowns
+and reset sequences are the same shape.
+
+Mitigated with a dwell: the tick is only enabled once no-control has persisted for
+1500 ms, and the timer restarts on every entry into the state. Crash windows are
+short and flicker (1 -> 0 -> 1 inside two seconds above), cutscenes and menus run
+far longer, so the wait separates them without needing to identify either.
+
+This is a heuristic and is labelled as one in the source. The principled version
+keys on whether the player's vehicle is actively being simulated rather than on
+elapsed time; that needs a signal not yet located. Cost of the heuristic: a real
+cutscene spends its first 1.5 s at 30 before unlocking.
+
+The general lesson is the one this project keeps relearning in new clothes. The
+control flag answers "is the player driving", and it was used to answer "is the
+car being simulated". Those coincide almost always, and the exception was a
+visible, memorable moment of the game.
