@@ -85,6 +85,10 @@ extern "C" {
     uintptr_t g_pNosBoostReturn = 0;
     void PlayerNosBoostHookAsm();
 
+    // Draft telemetry captured by the input-state cave in input_state.cpp.
+    extern float g_DraftRaw;
+    extern float g_DraftApplied;
+
     float     g_PlayerNosRecharge = 1.0f;
     float     g_PlayerNosStrength = 1.0f;
     float     g_PlayerNosBonus    = 1.0f;
@@ -225,6 +229,13 @@ namespace {
         bool changed = false;
         for (int i = 0; i < 4; ++i) {
             now[i] = *reinterpret_cast<float*>(s + offs[i]);
+            // Reject readings that cannot be real. The isHumanPlayer gate above
+            // catches most foreign objects, but freed memory can happen to carry
+            // a nonzero byte at that offset and slip through — a run produced
+            // override=6141578299714231252881854431232 that way. These are all
+            // small scalars, so anything wild is a dead object, not a reading.
+            // The comparison also rejects NaN, which fails every comparison.
+            if (!(now[i] > -1000.0f && now[i] < 1000.0f)) return;
             // Only a real move counts; these carry float noise frame to frame.
             if (now[i] < g_WatchLast[i] - 0.0005f || now[i] > g_WatchLast[i] + 0.0005f) {
                 changed = true;
@@ -235,6 +246,26 @@ namespace {
         Logger::Log("NOS fields: %s=%.4f  %s=%.4f  %s=%.4f  %s=%.4f",
                     kNames[0], now[0], kNames[1], now[1], kNames[2], now[2], kNames[3], now[3]);
         for (int i = 0; i < 4; ++i) g_WatchLast[i] = now[i];
+    }
+
+    // Reports what the draft field actually did, so "drafting feels like it does
+    // nothing" can be checked instead of argued about. Raw is what the game
+    // computed, applied is what the car got. Both come from the cave and are the
+    // player's car by construction.
+    float g_WatchLastDraft = -1.0f;
+
+    void WatchDraft() {
+        const float raw = g_DraftRaw;
+        if (!(raw > -1000.0f && raw < 1000.0f)) return;
+        if (raw > g_WatchLastDraft - 0.005f && raw < g_WatchLastDraft + 0.005f) return;
+        g_WatchLastDraft = raw;
+        if (raw <= 0.0f) {
+            Logger::Log("Draft: not drafting (raw %.4f).", raw);
+        } else {
+            Logger::Log("Draft: game computed %.4f, car got %.4f (ramp x%.2f).",
+                        raw, g_DraftApplied,
+                        raw != 0.0f ? g_DraftApplied / raw : 1.0f);
+        }
     }
 
     void InstallSite(const char* name, uintptr_t off, const uint8_t* expect, size_t size,
@@ -302,6 +333,7 @@ namespace Features {
                 g_LastReportedAward = award;
             }
             WatchRechargeFields();
+            WatchDraft();
         }
 
         if ((recharge != g_LastRecharge || strength != g_LastStrength

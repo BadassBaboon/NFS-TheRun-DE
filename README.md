@@ -59,9 +59,9 @@ road segments. Clearing the render target each frame fixes it.
 Extreme difficulty in The Run mostly means quicker AI. Pick Extreme with this on
 and the mod recognises it and changes the rules: the difficulty is renamed to
 **DEADLY** in the menus, your car is capped to half its health, nitrous stops
-filling on its own, drafting builds at half rate, the driving assists are
-stripped from your car, and the AI is scaled up. The one thing it hands back is a little more nitrous
-punch when you do earn a bar.
+filling on its own, drafting has to be held to reach full strength, the driving
+assists are stripped from your car, and the AI is scaled up. The one thing it
+hands back is a little more nitrous punch when you do earn a bar.
 
 Every one of those changes is **player-only**. AI cars keep their full
 slipstream, their assists, and get twice the nitrous recharge. That distinction is the whole
@@ -83,16 +83,21 @@ forcing every event to the same ceiling made sparse stretches as congested as ci
 ones, and traffic that thick takes the speed out of the game. Multiplying keeps
 each event's own character and makes the busy ones busier.
 
-**Drafting is slowed, not removed.** It was disabled outright first, which was
-the nitrous mistake in miniature: drafting is a core mechanic, and deleting it
-removes a way to show skill instead of demanding one. The meter now builds at
-half rate while the slingshot it pays out is untouched, so the same reward costs
-twice as long held square behind a car at speed. The *nitrous* a draft earns is
-halved along with it — that reward is computed from the same field — which is
-consistent enough to leave alone: twice as long in the slipstream, same total.
-Near misses and the oncoming lane are unaffected. The two halves can be separated
-because they are separate fields — the per-frame draft contribution the game
-integrates into the meter is what zeroing removed, and the payout is elsewhere.
+**Drafting ramps up, rather than being removed or weakened.** It starts at half
+strength and climbs to the game's full value over two seconds of unbroken
+slipstream, resetting once the draft has been properly broken — a brief flicker
+or a jump that puts the car in the air is forgiven, since a bump in the road is
+not a driving mistake. The full slingshot is still
+available and still pays what it always did; it has to be earned by holding a hard
+line instead of brushing a bumper. The nitrous a draft earns follows the same
+value, so it ramps too. Near misses and the oncoming lane are unaffected.
+
+Two earlier attempts were wrong and are worth recording. Disabling it outright was
+the nitrous mistake in miniature: deleting a core mechanic removes a way to show
+skill instead of demanding one. Halving it with a flat multiply looked right and
+did nothing of the sort — telemetry showed the field is a normalised 0-to-1
+quality that saturates, so multiplying caps the draft at half power *permanently*
+rather than slowing anything down. That is why it felt dead.
 
 **Nitrous is earned, not removed.** An earlier version disabled it outright and
 that was a mistake, because several timed and chase events are close to

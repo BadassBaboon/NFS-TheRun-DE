@@ -37,18 +37,32 @@
 // substitute its own for the draftingSpeed about to be stored. Eight bytes there
 // leaves room for the 5-byte jump.
 //
-// WHY DRAFTING IS SCALED RATHER THAN REMOVED. It was disabled outright first, and
-// that was the same mistake the nitrous work made: drafting is a core mechanic,
-// not a convenience, and taking it away removes a skill expression rather than
-// demanding one. Slipstreaming well means holding a line directly behind a car at
-// speed, which is hard, and the reward for doing it is the slingshot. So the mode
-// halves the rate the draft builds at and leaves the payoff alone. You have to
-// sit in it twice as long to earn the same slingshot.
+// WHY DRAFTING IS RAMPED RATHER THAN REMOVED OR SCALED. It was disabled outright
+// first, and that was the same mistake the nitrous work made: drafting is a core
+// mechanic, and taking it away removes a skill expression rather than demanding
+// one. The intent is that you should have to hold the slipstream twice as long to
+// earn the same slingshot.
 //
-// That split works for the same reason the nitrous one does: the accumulation and
-// the payoff are separate fields. [esi+2B0h] is the per-frame draft contribution
-// the game integrates into the meter — zeroing it removed drafting entirely,
-// which is what proves it is the input side — and [esi+2B4h] is left untouched.
+// The second attempt multiplied [esi+2B0h] by 0.5 and was also wrong, which the
+// telemetry below settled. That field is not a per-frame contribution to a meter,
+// it is a NORMALISED 0..1 QUALITY that saturates:
+//
+//     0.0710 -> 0.1421 -> 0.2079 -> ... -> 0.9945 -> 1.0000
+//
+// so a flat multiply does not slow anything down. It caps the draft at half power
+// permanently — hold a perfect slipstream for ten seconds and the game computes
+// 1.0000 while the car receives 0.5000, for as long as you stay there. That is
+// "half the benefit forever", not "twice as long to earn it", and it is why
+// drafting felt dead and why the nitrous it feeds barely moved.
+//
+// So the scale is now a RAMP over time instead. The value starts at the
+// configured fraction and climbs to the game's full value after the slipstream
+// has been held continuously for kDraftRampMs. Break the draft and the timer
+// resets. That is the original intent expressed against what the field actually
+// is: the full slingshot is still available, it just has to be earned by holding
+// a hard line rather than by brushing a bumper.
+//
+// [esi+2B4h] is left untouched throughout.
 //
 // Three constraints. The x87 stack has a live value pushed at 0x0069B67A and
 // popped at 0x0069B688, so the cave stays off the FPU entirely. Flags are
@@ -60,6 +74,10 @@
 extern "C" {
     uint8_t   g_ScaleDraft = 0;
     float     g_DraftScale = 1.0f;
+    // Telemetry, so "drafting feels like it does nothing" becomes a number rather
+    // than a feeling. Captured for the PLAYER only, before and after scaling.
+    float     g_DraftRaw     = 0.0f;
+    float     g_DraftApplied = 0.0f;
     uint8_t   g_DisablePlayerAssists = 0;
     uintptr_t g_pInputStateReturn = 0;
     void InputStateHookAsm();
@@ -71,16 +89,18 @@ asm(
     "_InputStateHookAsm:\n"
     "    cmpb $0, 0x102(%esi)\n"              // isHumanPlayer?
     "    je   2f\n"                           // an AI car -> change nothing at all
-    "    cmpb $0, _g_ScaleDraft\n"
-    "    je   1f\n"
     "    subl $16, %esp\n"                    // borrow xmm1, then hand it back
     "    movups %xmm1, (%esp)\n"
     "    movss 0x2B0(%esi), %xmm1\n"          // the draft the game just computed
+    "    movss %xmm1, _g_DraftRaw\n"          // recorded before we touch it
+    "    cmpb $0, _g_ScaleDraft\n"
+    "    je   1f\n"
     "    mulss _g_DraftScale, %xmm1\n"        // built at our rate instead
     "    movss %xmm1, 0x2B0(%esi)\n"
+    "1:\n"
+    "    movss %xmm1, _g_DraftApplied\n"      // and after, scaled or not
     "    movups (%esp), %xmm1\n"
     "    addl $16, %esp\n"
-    "1:\n"
     "    cmpb $0, _g_DisablePlayerAssists\n"
     "    je   2f\n"
     "    movl $0, 0x290(%esi)\n"              // racelineAssistForceScalar
@@ -96,6 +116,28 @@ namespace {
     const uint8_t   kExpect[8] = { 0xF3, 0x0F, 0x11, 0x86, 0xB4, 0x02, 0x00, 0x00 };
 
     bool g_Installed = false;
+
+    // How long a slipstream must be held continuously before the draft reaches
+    // the game's full value. Below this it is interpolated up from the configured
+    // fraction, so a brief draft still does something.
+    const DWORD kDraftRampMs = 2000;
+    const float kDraftActive  = 0.02f;   // raw above this counts as drafting
+
+    // How long the draft may lapse without losing the ramp.
+    //
+    // Without this, one frame under the threshold throws away the whole ramp — a
+    // log caught it going from x0.97 straight back to x0.50. Two things cause
+    // that: the value simply flickers around the threshold at the edges of a
+    // draft, and the game zeroes drafting outright whenever the car catches air.
+    // A bump in the road is not a driving mistake, and it should not cost two
+    // seconds of holding a hard line.
+    //
+    // Short enough that genuinely leaving the slipstream still resets, since
+    // pulling out and coming back takes far longer than this.
+    const DWORD kDraftGraceMs = 400;
+
+    DWORD g_DraftHoldStart = 0;
+    DWORD g_DraftLostAt    = 0;
 
     float   g_LastDraftScale = -1.0f;
     uint8_t g_LastAssists = 0xFF;
@@ -148,10 +190,41 @@ namespace Features {
                                   : g_Config.PlayerDraftRateScale;
         uint8_t assists    = (rfyl || g_Config.DisablePlayerAssists) ? 1 : 0;
 
+        // Ramp the scale toward 1.0 the longer the slipstream is held. The cave
+        // just multiplies by whatever is here, so all the timing lives on this
+        // side where a clock is available.
+        float applied = 1.0f;
+        if (draftScale != 1.0f) {
+            const DWORD now = GetTickCount();
+            const bool drafting = (g_DraftRaw > kDraftActive);
+
+            if (drafting) {
+                if (g_DraftHoldStart == 0) g_DraftHoldStart = now;
+                g_DraftLostAt = 0;
+            } else if (g_DraftHoldStart != 0) {
+                // Lapsed. Start the grace clock, and only give up on the ramp
+                // once the draft has stayed gone long enough to be deliberate.
+                if (g_DraftLostAt == 0) {
+                    g_DraftLostAt = now;
+                } else if (now - g_DraftLostAt >= kDraftGraceMs) {
+                    g_DraftHoldStart = 0;
+                    g_DraftLostAt = 0;
+                }
+            }
+
+            float t = 0.0f;
+            if (g_DraftHoldStart != 0) {
+                const DWORD held = now - g_DraftHoldStart;
+                t = (held >= kDraftRampMs) ? 1.0f
+                                           : static_cast<float>(held) / kDraftRampMs;
+            }
+            applied = draftScale + (1.0f - draftScale) * t;
+        }
+
         // A scale of exactly 1.0 means the cave leaves the field alone entirely,
         // rather than multiplying by one — so a disengaged mode is byte-for-byte
         // the stock game, not an arithmetic no-op that could still round.
-        g_DraftScale = draftScale;
+        g_DraftScale = applied;
         g_ScaleDraft = (draftScale != 1.0f) ? 1 : 0;
         g_DisablePlayerAssists = assists;
 
@@ -159,8 +232,9 @@ namespace Features {
             if (draftScale == 1.0f) {
                 Logger::Log("Player draft rate restored to stock.");
             } else {
-                Logger::Log("Player draft rate x%.2f. The slingshot it pays out is "
-                            "unscaled, and AI cars keep their full slipstream.", draftScale);
+                Logger::Log("Player draft starts at x%.2f and ramps to full over %lu ms of "
+                            "held slipstream. AI cars keep theirs in full.",
+                            draftScale, static_cast<unsigned long>(kDraftRampMs));
             }
             g_LoggedDraft = true;
         }

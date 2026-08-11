@@ -1401,3 +1401,27 @@ The general lesson is the one this project keeps relearning in new clothes. The
 control flag answers "is the player driving", and it was used to answer "is the
 car being simulated". Those coincide almost always, and the exception was a
 visible, memorable moment of the game.
+
+## 47. The draft ramp needed a grace period
+
+The ramp from section 46 worked on first test — a clean climb from x0.50 to x1.00
+over two seconds of held slipstream, then holding at full. One flaw showed up in
+the same log:
+
+    game computed 0.0198, car got 0.0192 (ramp x0.97)
+    game computed 0.0352, car got 0.0177 (ramp x0.50)
+
+A single frame under the 0.02 activity threshold discarded a nearly complete
+ramp. Two causes: the value flickers around the threshold at the edges of a
+draft, and — reported by the player — the game zeroes drafting outright whenever
+the car catches air. A bump in the road is not a driving mistake and should not
+cost two seconds of holding a hard line.
+
+Fixed with a 400 ms grace. The hold timer is only abandoned once the draft has
+stayed below the threshold for that long, so flicker and small jumps are absorbed
+while genuinely pulling out of the slipstream still resets — leaving and rejoining
+takes far longer than 400 ms.
+
+Worth noting the ramp is applied to a value the game has already zeroed in the
+air case, so the grace does not hand back draft that was not earned. It only
+decides where the ramp resumes when the slipstream comes back.

@@ -329,6 +329,23 @@ namespace Features {
             targetFps = kBaseSimRate;
         }
 
+        // The unlock clamps the SHORT no-control windows itself, whatever the
+        // clamp setting says.
+        //
+        // Turning the tick off for crashes was not enough: wrecks still came out
+        // limp. The tick was never the whole story — crash drama also needs the
+        // rate at 30, and using the unlock means running with the clamp off, which
+        // left crashes at the target framerate. So the two halves are handled
+        // together. A window that has not yet earned the unlock gets the full
+        // fixed-30 treatment, exactly as if the clamp were on, and only a window
+        // that outlasts the dwell is released to the target rate.
+        //
+        // This makes the unlock self-contained: driving fast and fixed, crashes
+        // and takedowns at 30, cutscenes fast and smooth.
+        if (g_Config.UnlockCutsceneFPS && noControl && !cutsceneUnlock) {
+            targetFps = kBaseSimRate;
+        }
+
         if (targetFps > 0.0f && *pMaxVariableFps != targetFps) {
             *pMaxVariableFps = targetFps;
         }
