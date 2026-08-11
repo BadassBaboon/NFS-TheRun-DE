@@ -67,6 +67,11 @@ static int  g_LastControlState = -1;   // -1 unknown, 0 no control, 1 has contro
 static bool g_WarnedStaleControl = false;
 static bool g_WarnedCutsceneConflict = false;
 
+// True while the control byte is unreadable garbage. The clamp can safely hold
+// its last known state through this; the cutscene unlock CANNOT, and must fail
+// closed instead. See the note at the tick write.
+static bool g_ControlReadStale = false;
+
 // When the no-control window began, for the cutscene-unlock dwell below.
 static DWORD g_NoControlSince = 0;
 
@@ -240,6 +245,7 @@ namespace Features {
             // which is exactly what the clamp exists to prevent. The last known
             // good state is held until the hook fires again and re-captures.
             if (ctlByte > 1) {
+                g_ControlReadStale = true;
                 if (!g_WarnedStaleControl) {
                     Logger::Log("Vehicle control: byte at 0x%08X read %u, which is not a bool. "
                                 "The object it points at was freed and reused. Holding the last "
@@ -269,6 +275,13 @@ namespace Features {
                     // Restart the dwell on every entry into no-control, so a crash
                     // that briefly drops control cannot inherit a cutscene's credit.
                     if (!hasControl) g_NoControlSince = GetTickCount();
+                }
+                // Coming back from a stale run restarts the dwell. The state may
+                // have read "no control" the whole time it was garbage, and that
+                // stretch should not count as a cutscene that has proven itself.
+                if (g_ControlReadStale) {
+                    g_NoControlSince = GetTickCount();
+                    g_ControlReadStale = false;
                 }
                 g_WarnedStaleControl = false;
             }
@@ -300,7 +313,15 @@ namespace Features {
         // the timing is tighter. Play-testing found them still playable, just less
         // forgiving. That is a real trade rather than a free win, which is why this
         // ships off.
+        // FAIL CLOSED ON A STALE READ. The clamp holds its last known state when
+        // the control byte turns to garbage, because clamping to 30 during
+        // gameplay is merely slow. The tick is the opposite: holding "no control"
+        // while the player is actually driving leaves the variable step ON through
+        // live gameplay, which is the one outcome this whole design exists to
+        // prevent. So an untrustworthy read forces the fixed step, and the unlock
+        // resumes only once the byte reads as a bool again.
         const bool dwellMet = noControl
+                           && !g_ControlReadStale
                            && (GetTickCount() - g_NoControlSince) >= kCutsceneDwellMs;
         const bool cutsceneUnlock = g_Config.UnlockCutsceneFPS && dwellMet;
 
