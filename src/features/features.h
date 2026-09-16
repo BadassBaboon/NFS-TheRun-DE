@@ -30,11 +30,10 @@ namespace Difficulty {
     // A little more push when you do get to use it, to offset how scarce the bar
     // now is. This is the one thing the mode gives the player rather than takes.
     const float kPlayerNosStrengthScale = 1.12f;
-    // How fast the player's draft meter builds. The slingshot it pays out is NOT
-    // scaled — sit in the slipstream twice as long and you get the same reward.
-    // Drafting was removed outright at one point, which was the nitrous mistake
-    // again: it is a core mechanic, and deleting it removes a skill expression
-    // instead of demanding one.
+    // Where the player's draft STARTS. It ramps from here to the game's full
+    // value over two seconds of held slipstream, so the full slingshot is still
+    // available but has to be earned. Drafting was removed outright at one point,
+    // then flat-scaled, and both were wrong — see input_state.cpp.
     const float kPlayerDraftRateScale   = 0.50f;
     // A MULTIPLIER on whatever ceiling the event was authored with, not a fixed
     // number. A flat 0.25 was tried first and made sparse events as busy as city
@@ -76,6 +75,10 @@ namespace Features {
     // puts it back when it is not. Live, because the difficulty is not known at
     // init and can change between events.
     void UpdateTrackRules();
+
+    // Forces one vehicle into every opponent slot, so pack AI, rivals and bosses
+    // all drive the same car. Pointer chain, no hook. INI-gated, OFF by default.
+    void UpdateVehicleSwap();
 
     // Forces traffic density scale, max density, and vehicle limit. INI-gated, OFF by default.
     void InitTrafficControls();

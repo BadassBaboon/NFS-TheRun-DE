@@ -53,6 +53,7 @@ DWORD WINAPI MainThread(LPVOID /*lpParam*/) {
         Features::UpdateAiDifficulty();
         Features::UpdateTrackRules();     // reads that decision, so it runs after
         Features::UpdateTrafficControls();
+        Features::UpdateVehicleSwap();
         Features::UpdateNosTuning();
         Features::UpdateTodRandomizer();
         Features::UpdateDifficultyText();

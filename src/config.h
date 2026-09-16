@@ -20,6 +20,16 @@ struct ConfigStruct {
 
     int RunForYourLife = 1;
 
+    // Which car set the game races with. 0 leaves the game's own choices alone.
+
+    // 1 = Golf Only. Independent of RunForYourLife: the mode picks the cars,
+
+    // the difficulty changes the rules, and the two compose without special
+
+    // casing.
+
+    int GameMode = 0;
+
     // [GRAPHICS_FPS]
     int EnableFramerateUnlocker = 1;   // master gate: injects GameTime + control hooks
     int FPSLimit = 60;
@@ -65,6 +75,11 @@ struct ConfigStruct {
     // above 1.0 is faster. Does NOT touch the slingshot the draft pays out.
     float PlayerDraftRateScale   = 1.0f;
 
+    // [VEHICLE_SWAP]
+    // A vehicle ID written into every opponent slot, so one car races everywhere.
+    // 0 leaves the game's own choices alone.
+    unsigned int ForcedVehicleId = 0;
+
     // [HIGH_FPS_FIXES]
     // Fixes the engine-audio pitch above 30 FPS. 1 = snap (recommended),
     // 2 = keep the pitch glide but only re-arm it once finished.
@@ -100,6 +115,9 @@ struct ConfigStruct {
 
     // [DIAGNOSTICS] Log Ginsu render state ~1x/sec per voice. Troubleshooting only.
     int LogNosAwards = 0;
+    // Dumps the opponent vehicle array whenever an event sets one up. This is how
+    // you find out how many slots an event has before forcing a car into them.
+    int LogVehicleArray = 0;
     int LogGinsuDiagnostics = 0;
     int LogSettingsContainers = 0;   // dump settings-container addresses once
 };

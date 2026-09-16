@@ -38,6 +38,7 @@ namespace Config {
 
         g_Config.RandomizeTimeOfDay   = GetPrivateProfileIntA("GAMEPLAY", "RandomizeTimeOfDay", 0, iniPath);
         g_Config.RunForYourLife       = GetPrivateProfileIntA("GAMEPLAY", "RunForYourLife", 1, iniPath);
+        g_Config.GameMode             = GetPrivateProfileIntA("GAMEPLAY", "GameMode",       0, iniPath);
 
         g_Config.DisablePlayerAssists       = GetPrivateProfileIntA("VEHICLE", "DisablePlayerAssists", 0, iniPath);
         g_Config.VehicleHealth              = ReadIniFloat("VEHICLE", "VehicleHealth", -1.0f, iniPath);
@@ -49,6 +50,9 @@ namespace Config {
         g_Config.PlayerNosStrengthScale = ReadIniFloat("VEHICLE", "PlayerNosStrengthScale", 1.0f, iniPath);
         g_Config.PlayerNosBoostScale    = ReadIniFloat("VEHICLE", "PlayerNosBoostScale",    1.0f, iniPath);
         g_Config.PlayerDraftRateScale   = ReadIniFloat("VEHICLE", "PlayerDraftRateScale",   1.0f, iniPath);
+
+        g_Config.ForcedVehicleId    = static_cast<unsigned int>(
+            GetPrivateProfileIntA("VEHICLE_SWAP", "ForcedVehicleId",    0, iniPath));
 
         g_Config.FixEngineAudioSlew    = GetPrivateProfileIntA("HIGH_FPS_FIXES", "FixEngineAudioSlew",    1, iniPath);
         g_Config.FixKickupParticles     = GetPrivateProfileIntA("HIGH_FPS_FIXES", "FixKickupParticles", 1, iniPath);
@@ -70,6 +74,7 @@ namespace Config {
         g_Config.AnisotropicFiltering     = GetPrivateProfileIntA("TEXTURE",     "AnisotropicFiltering",    -1, iniPath);
 
         g_Config.LogNosAwards          = GetPrivateProfileIntA("DIAGNOSTICS",    "LogNosAwards",          0, iniPath);
+        g_Config.LogVehicleArray       = GetPrivateProfileIntA("DIAGNOSTICS",    "LogVehicleArray",       0, iniPath);
         g_Config.LogGinsuDiagnostics   = GetPrivateProfileIntA("DIAGNOSTICS",    "LogGinsuDiagnostics",   0, iniPath);
         g_Config.LogSettingsContainers = GetPrivateProfileIntA("DIAGNOSTICS",    "LogSettingsContainers", 0, iniPath);
     }
@@ -89,13 +94,15 @@ namespace Config {
         Logger::Log("  DisablePlayerAssists=%d", g_Config.DisablePlayerAssists);
         Logger::Log("  VehicleHealth=%.1f", g_Config.VehicleHealth);
         Logger::Log("  RandomizeTimeOfDay=%d", g_Config.RandomizeTimeOfDay);
-        Logger::Log("  RunForYourLife=%d", g_Config.RunForYourLife);
+        Logger::Log("  RunForYourLife=%d  GameMode=%d", g_Config.RunForYourLife, g_Config.GameMode);
         Logger::Log("  AiSkillScale=%.2f  AiGlueScale=%.2f  AiNosRechargeScale=%.2f",
             g_Config.AiSkillScale, g_Config.AiGlueScale, g_Config.AiNosRechargeScale);
         Logger::Log("  PlayerNos: Recharge=%.2f  Bonus=%.2f  Strength=%.2f  Boost=%.2f",
             g_Config.PlayerNosRechargeScale, g_Config.PlayerNosBonusScale,
             g_Config.PlayerNosStrengthScale, g_Config.PlayerNosBoostScale);
         Logger::Log("  PlayerDraftRateScale=%.2f", g_Config.PlayerDraftRateScale);
+        Logger::Log("  ForcedVehicleId=%u  LogVehicleArray=%d",
+            g_Config.ForcedVehicleId, g_Config.LogVehicleArray);
         Logger::Log("  EnableRenderTweaks=%d  ForceFov=%.1f  FovDrivingOnly=%d  ForceRenderShiftEnabled=%d  ShiftX=%.3f  ShiftY=%.3f  ForceRoll=%.3f  FixMinimapRendering=%d",
             g_Config.EnableRenderTweaks, g_Config.ForceFov, g_Config.ForceFovOnlyWhileDriving, g_Config.ForceRenderShiftEnabled,
             g_Config.ForceRenderShiftX, g_Config.ForceRenderShiftY, g_Config.ForceRoll, g_Config.FixMinimapRendering);
