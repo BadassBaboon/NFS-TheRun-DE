@@ -1,5 +1,6 @@
 #include "features.h"
 #include "event_table.h"
+#include "run_modes.h"
 #include "../config.h"
 #include "../memory.h"
 #include "../logger.h"
@@ -42,6 +43,12 @@
 // entry of the available-car list does work, but it makes a pump show fifty-seven
 // identical cars, which is worse than leaving the player's choice alone.
 //
+// THE THREE RUN MODES fill an event from a curated pool instead of forcing one
+// car, which is what All American Run, The Classics Run and The Supercar Run do.
+// The pools and the per-event stage mapping are in run_modes.h; the only logic
+// here is drawing from them. Picks are WITHOUT REPLACEMENT, matching the source
+// tables -- a nine-car grid of nine different cars, not nine of one.
+//
 // ON SLOT COUNTS. The count cannot be guessed. In a nine-slot event slot 9 held
 // aud_ur_qua_91_ai_162 -- a valid vehicle ID belonging to something else -- with an
 // asset-path string only starting at slot 10, so neither "keep going while it looks
@@ -72,6 +79,18 @@ namespace {
     // DOUBLE CROSS: Sergeant Cross's Corvette, che_vet_cbn_10_presale_1.
     const uint32_t kCrossCorvette = 1464376845u;
 
+    // xorshift32. The grid should differ between runs of the same event, which is
+    // the whole appeal of the Run mods, and nothing here needs a good distribution
+    // beyond that. Seeded once from the tick count.
+    uint32_t g_Rng = 0;
+    uint32_t NextRandom() {
+        if (g_Rng == 0) g_Rng = GetTickCount() | 1u;
+        g_Rng ^= g_Rng << 13;
+        g_Rng ^= g_Rng >> 17;
+        g_Rng ^= g_Rng << 5;
+        return g_Rng;
+    }
+
     uintptr_t g_EventArray  = 0;   // array address for the event we resolved
     uint32_t  g_EventPreset = 0;   // and its preset, together the event's identity
     uint8_t   g_EventSlots  = 0;   // slots to write, 0 = leave this event alone
@@ -84,6 +103,11 @@ namespace {
     // have allowed -- so this does not rely on getting the arithmetic right.
     bool  g_FailLatched = false;
     DWORD g_FailTicks   = 0;
+
+    // The grid drawn for the current event, held so every tick writes the same
+    // cars rather than reshuffling.
+    uint32_t g_Draw[kMaxSlotsWritten] = {0};
+    bool     g_DrawValid = false;
 
     inline bool Readable(uintptr_t addr, size_t size) {
         return addr >= 0x10000 && Memory::IsReadable(addr, size);
@@ -117,11 +141,33 @@ namespace {
         return *reinterpret_cast<uint32_t*>(a);
     }
 
-    // Which car the active mode puts on the grid. The INI can override it.
+    // Which single car the active mode puts in every slot, or 0 if this mode draws
+    // from a pool instead.
     uint32_t WantedVehicle() {
         if (g_Config.ForcedVehicleId != 0) return g_Config.ForcedVehicleId;
         if (g_Config.GameMode == 1) return kCrossCorvette;
         return 0;
+    }
+
+    // Fills out[0..count) with distinct entries drawn from a pool.
+    //
+    // Rejection sampling against what has already been chosen. With counts of at
+    // most nine against pools of fifty to four hundred, collisions are rare and the
+    // retry cap keeps a pathologically small pool from spinning -- if it gives up,
+    // the slot simply repeats a car, which is a duller grid rather than a hang.
+    void DrawDistinct(const uint32_t* pool, uint16_t poolSize, uint32_t* out, int count) {
+        for (int i = 0; i < count; ++i) {
+            uint32_t pick = 0;
+            for (int attempt = 0; attempt < 32; ++attempt) {
+                pick = pool[NextRandom() % poolSize];
+                bool clash = false;
+                for (int j = 0; j < i; ++j) {
+                    if (out[j] == pick) { clash = true; break; }
+                }
+                if (!clash) break;
+            }
+            out[i] = pick;
+        }
     }
 
     void DumpArray(uintptr_t arr, uint32_t preset, uint8_t slots, uint32_t slot0) {
@@ -149,8 +195,10 @@ namespace {
 namespace Features {
     void UpdateVehicleSwap() {
         const uint32_t want = WantedVehicle();
+        const RunModes::Mode* mode =
+            (g_Config.ForcedVehicleId != 0) ? 0 : RunModes::ForGameMode(g_Config.GameMode);
         const bool active = (want != 0);
-        if (!active && !g_Config.LogVehicleArray) return;
+        if (!active && !mode && !g_Config.LogVehicleArray) return;
 
         uintptr_t walk[8] = {0};
         int depth = 0;
@@ -212,14 +260,39 @@ namespace Features {
         // the ticker for ten seconds scanning the address space; the cars were long
         // since on track by the time the write landed, and the mode looked broken
         // while the log claimed it had done the work. Diagnostics go after.
-        if (active && g_EventSlots > 0) {
+        if (g_EventSlots > 0 && (active || mode)) {
             int slots = g_EventSlots;
             if (slots > kMaxSlotsWritten) slots = kMaxSlotsWritten;
+
+            // A pooled mode redraws only when the event changes. Redrawing every
+            // tick would reshuffle the grid underneath the game while it is
+            // spawning, and would make the log meaningless.
+            if (mode && isNewEvent) {
+                size_t ei = EventTable::IndexOf(slot0);
+                uint8_t stage = (ei < EventTable::kEventCount) ? mode->eventStage[ei] : 0xFF;
+                if (stage < mode->poolCount && mode->poolSize[stage] > 0) {
+                    DrawDistinct(mode->pools[stage], mode->poolSize[stage], g_Draw, slots);
+                    g_DrawValid = true;
+                    if (g_Config.LogVehicleArray) {
+                        Logger::Log("%s: drawing %d car(s) from pool %u of %u (%u entries).",
+                                    mode->name, slots, stage, mode->poolCount,
+                                    mode->poolSize[stage]);
+                    }
+                } else {
+                    g_DrawValid = false;
+                    if (g_Config.LogVehicleArray) {
+                        Logger::Log("%s: no pool for this event, leaving it alone.",
+                                    mode->name);
+                    }
+                }
+            }
+
             for (int i = 0; i < slots; ++i) {
                 uintptr_t slot = arr + static_cast<uintptr_t>(i) * kSlotStride;
                 if (!Readable(slot, sizeof(uint32_t))) break;
                 uint32_t* p = reinterpret_cast<uint32_t*>(slot);
-                if (*p != want) *p = want;
+                uint32_t v = mode ? (g_DrawValid ? g_Draw[i] : 0) : want;
+                if (v != 0 && *p != v) *p = v;
             }
         }
 

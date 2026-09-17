@@ -67,12 +67,18 @@ namespace EventTable {
 
     static const size_t kEventCount = sizeof(kEvents) / sizeof(kEvents[0]);
 
+    // Returns kEventCount for an event that is not in the table.
+    inline size_t IndexOf(uint32_t detect) {
+        for (size_t i = 0; i < kEventCount; ++i) {
+            if (kEvents[i].detect == detect) return i;
+        }
+        return kEventCount;
+    }
+
     // Returns 0 for an event that is not in the table, which means "do nothing".
     inline uint8_t SlotsFor(uint32_t detect) {
-        for (size_t i = 0; i < kEventCount; ++i) {
-            if (kEvents[i].detect == detect) return kEvents[i].slots;
-        }
-        return 0;
+        size_t i = IndexOf(detect);
+        return (i < kEventCount) ? kEvents[i].slots : 0;
     }
 }
 
