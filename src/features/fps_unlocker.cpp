@@ -313,8 +313,9 @@ namespace Features {
         // THE COST is the QTE fix, which is the clamp. Prompts count down against
         // a 30 FPS frame time, so at the target framerate they expire faster and
         // the timing is tighter. Play-testing found them still playable, just less
-        // forgiving. That is a real trade rather than a free win, which is why this
-        // ships off.
+        // forgiving, but keeping cutscenes at 30 is the settled preference here
+        // rather than a limitation to work around -- the QTE timing is worth more
+        // than smoother cutscenes. This ships off and should stay off.
         // There used to be a fail-closed clause here for stale control reads. It
         // is gone because the state it guarded against is gone: the byte is now
         // sampled at the hook, so it cannot be read from a freed object at all.
