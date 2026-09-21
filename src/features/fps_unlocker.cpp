@@ -9,7 +9,24 @@ extern "C" {
     uintptr_t g_pGameTimeReturn = 0;
 
     // Captured pointer to the PlayerHasVehicleControl byte (game sets/clears it).
+    // Still published because other features read it, but this file no longer
+    // dereferences it -- see the sampled pair below.
     uint8_t* g_pHasControl = nullptr;
+
+    // The control byte SAMPLED INSIDE THE HOOK, on the game's own thread, plus a
+    // counter that changes whenever a sample is taken.
+    //
+    // Reading g_pHasControl from the ticker was a race. The object it points into
+    // gets freed and its memory reused, and the guard that caught that only
+    // rejected values which were not 0 or 1 -- it caught the 48 and 176 seen in
+    // real logs, but a reused byte that happens to BE 0 or 1 passes as a valid
+    // reading and silently leaves the sim-rate logic in the wrong state. Sampling
+    // at the hook removes the cross-thread dereference altogether, so the failure
+    // mode stops existing rather than being filtered.
+    //
+    // Taken from the wefalltomorrow fork, which found the hole.
+    volatile uint32_t g_ControlSampleCounter = 0;
+    volatile uint8_t  g_ControlSampleValue = 0;
     uintptr_t g_pControlReturn = 0;       // return addr for the direct (unhooked-site) path
     uintptr_t g_pControlChainTarget = 0;  // existing hook's stub, for the coexist path
 
@@ -37,10 +54,13 @@ asm(
     ".text\n"
     ".globl _ControlCheckHookAsm\n"
     "_ControlCheckHookAsm:\n"
-    "    pushl %ebx\n"
-    "    leal 0x04(%esi), %ebx\n"
-    "    movl %ebx, _g_pHasControl\n"
-    "    popl %ebx\n"
+    "    pushl %eax\n"
+    "    leal 0x04(%esi), %eax\n"
+    "    movl %eax, _g_pHasControl\n"
+    "    movzbl 0x04(%esi), %eax\n"       // sample it here, on the game's own thread
+    "    movb %al, _g_ControlSampleValue\n"
+    "    incl _g_ControlSampleCounter\n"  // clobbers flags; the stolen cmpb resets them
+    "    popl %eax\n"
     "    cmpb $0x00, 0x04(%esi)\n"   // stolen: cmp byte ptr [esi+04],00
     "    pushl %edi\n"               // stolen: push edi
     "    jmpl *_g_pControlReturn\n"
@@ -54,23 +74,24 @@ asm(
     ".text\n"
     ".globl _ControlChainHookAsm\n"
     "_ControlChainHookAsm:\n"
-    "    pushl %eax\n"
+    "    pushfl\n"                        // incl below clobbers flags and nothing
+    "    pushl %eax\n"                    // downstream re-sets them on this path
     "    leal 0x04(%esi), %eax\n"
     "    movl %eax, _g_pHasControl\n"
+    "    movzbl 0x04(%esi), %eax\n"
+    "    movb %al, _g_ControlSampleValue\n"
+    "    incl _g_ControlSampleCounter\n"
     "    popl %eax\n"
+    "    popfl\n"
     "    jmpl *_g_pControlChainTarget\n"
 );
 
 static bool g_LogCapturedHook = false;
 static bool g_LogCapturedControl = false;
 static int  g_LastControlState = -1;   // -1 unknown, 0 no control, 1 has control
-static bool g_WarnedStaleControl = false;
+static uint32_t g_LastControlSampleCounter = 0;
 static bool g_WarnedCutsceneConflict = false;
 
-// True while the control byte is unreadable garbage. The clamp can safely hold
-// its last known state through this; the cutscene unlock CANNOT, and must fail
-// closed instead. See the note at the tick write.
-static bool g_ControlReadStale = false;
 
 // When the no-control window began, for the cutscene-unlock dwell below.
 static DWORD g_NoControlSince = 0;
@@ -111,8 +132,8 @@ static const DWORD kControlHookDelayMs = 5000;
 static const float kBaseSimRate = 30.0f;
 
 // Validated view of the control flag for other features to gate on: -1 unknown,
-// 0 no control, 1 driving. Deliberately not the raw pointer — see the stale-read
-// handling in UpdateFramerateUnlocker.
+// 0 no control, 1 driving. Deliberately not the raw pointer, which other code
+// could dereference after the object behind it has been freed.
 extern "C" int PlayerControlState() { return g_LastControlState; }
 
 namespace Features {
@@ -228,62 +249,43 @@ namespace Features {
         // pull the sim rate back to 30 so hardcoded-30fps timers behave correctly.
         // The control state is read whether or not the clamp is enabled, because
         // the render settings gate the FOV override on it too.
-        if (g_pHasControl) {
-            uint8_t ctlByte = *g_pHasControl;
+        // The value comes from the hook's own sample rather than from a pointer
+        // dereferenced here, so there is no stale read to detect any more and no
+        // fail-closed path needed. The counter says a fresh sample exists; if the
+        // hook stops firing the counter stops and the last known state is held,
+        // which is the same conservative behaviour the old code fell back to.
+        const uint32_t sampleCounter = g_ControlSampleCounter;
+        if (sampleCounter != g_LastControlSampleCounter) {
+            g_LastControlSampleCounter = sampleCounter;
+            const uint8_t ctlByte = g_ControlSampleValue ? 1u : 0u;
 
             if (!g_LogCapturedControl) {
-                Logger::Log("Control-check hook active: PlayerHasVehicleControl byte at 0x%08X (initial value %u)",
-                            reinterpret_cast<uintptr_t>(g_pHasControl), ctlByte);
+                Logger::Log("Control-check hook active: PlayerHasVehicleControl sampled at the "
+                            "hook (initial value %u).", ctlByte);
                 g_LogCapturedControl = true;
             }
 
-            // The byte is a bool, so anything other than 0 or 1 means the pointer
-            // has gone stale: it aims into an object that has since been freed and
-            // its memory handed to something else. Treating a stale read as truth
-            // is worse than ignoring it — a garbage nonzero byte reads as "driving"
-            // and would release the sim-rate clamp in the middle of a cutscene,
-            // which is exactly what the clamp exists to prevent. The last known
-            // good state is held until the hook fires again and re-captures.
-            if (ctlByte > 1) {
-                g_ControlReadStale = true;
-                if (!g_WarnedStaleControl) {
-                    Logger::Log("Vehicle control: byte at 0x%08X read %u, which is not a bool. "
-                                "The object it points at was freed and reused. Holding the last "
-                                "known state until the hook re-captures.",
-                                reinterpret_cast<uintptr_t>(g_pHasControl), ctlByte);
-                    g_WarnedStaleControl = true;
+            const int hasControl = ctlByte ? 1 : 0;
+            if (hasControl != g_LastControlState) {
+                // Report what will actually happen, not what the clamp would
+                // do if it were on. These three settings produce three
+                // different responses to the same transition.
+                const char* effect;
+                if (hasControl) {
+                    effect = "driving, fixed sim step at the target framerate";
+                } else if (g_Config.UnlockCutsceneFPS) {
+                    effect = "no control, unlocking (variable sim tick on)";
+                } else if (g_Config.ClampSimRateWhenNoControl) {
+                    effect = "no control, clamping to 30";
+                } else {
+                    effect = "no control, sim rate left alone";
                 }
-            } else {
-                int hasControl = (ctlByte != 0) ? 1 : 0;
-                if (hasControl != g_LastControlState) {
-                    // Report what will actually happen, not what the clamp would
-                    // do if it were on. These three settings produce three
-                    // different responses to the same transition.
-                    const char* effect;
-                    if (hasControl) {
-                        effect = "driving, fixed sim step at the target framerate";
-                    } else if (g_Config.UnlockCutsceneFPS) {
-                        effect = "no control, unlocking (variable sim tick on)";
-                    } else if (g_Config.ClampSimRateWhenNoControl) {
-                        effect = "no control, clamping to 30";
-                    } else {
-                        effect = "no control, sim rate left alone";
-                    }
-                    Logger::Log("Vehicle control changed: PlayerHasVehicleControl=%u -> %s.",
-                                ctlByte, effect);
-                    g_LastControlState = hasControl;
-                    // Restart the dwell on every entry into no-control, so a crash
-                    // that briefly drops control cannot inherit a cutscene's credit.
-                    if (!hasControl) g_NoControlSince = GetTickCount();
-                }
-                // Coming back from a stale run restarts the dwell. The state may
-                // have read "no control" the whole time it was garbage, and that
-                // stretch should not count as a cutscene that has proven itself.
-                if (g_ControlReadStale) {
-                    g_NoControlSince = GetTickCount();
-                    g_ControlReadStale = false;
-                }
-                g_WarnedStaleControl = false;
+                Logger::Log("Vehicle control changed: PlayerHasVehicleControl=%u -> %s.",
+                            ctlByte, effect);
+                g_LastControlState = hasControl;
+                // Restart the dwell on every entry into no-control, so a crash
+                // that briefly drops control cannot inherit a cutscene's credit.
+                if (!hasControl) g_NoControlSince = GetTickCount();
             }
         }
 
@@ -313,15 +315,10 @@ namespace Features {
         // the timing is tighter. Play-testing found them still playable, just less
         // forgiving. That is a real trade rather than a free win, which is why this
         // ships off.
-        // FAIL CLOSED ON A STALE READ. The clamp holds its last known state when
-        // the control byte turns to garbage, because clamping to 30 during
-        // gameplay is merely slow. The tick is the opposite: holding "no control"
-        // while the player is actually driving leaves the variable step ON through
-        // live gameplay, which is the one outcome this whole design exists to
-        // prevent. So an untrustworthy read forces the fixed step, and the unlock
-        // resumes only once the byte reads as a bool again.
+        // There used to be a fail-closed clause here for stale control reads. It
+        // is gone because the state it guarded against is gone: the byte is now
+        // sampled at the hook, so it cannot be read from a freed object at all.
         const bool dwellMet = noControl
-                           && !g_ControlReadStale
                            && (GetTickCount() - g_NoControlSince) >= kCutsceneDwellMs;
         const bool cutsceneUnlock = g_Config.UnlockCutsceneFPS && dwellMet;
 
