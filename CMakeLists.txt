@@ -15,6 +15,7 @@ set(SOURCES
     src/features/extra_ui.cpp
     src/features/photo_mode.cpp
     src/features/fps_unlocker.cpp
+    src/features/loading_vsync.cpp
     src/features/track_rules.cpp
     src/features/vehicle_swap.cpp
     src/features/traffic.cpp

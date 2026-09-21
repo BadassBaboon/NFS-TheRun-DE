@@ -35,6 +35,9 @@ struct ConfigStruct {
     int FPSLimit = 60;
     int UnlockCutsceneFPS = 0;
     int ClampSimRateWhenNoControl = 1;
+    // Strips the hardcoded VSync pacing from the loading path. Nothing to do with
+    // the framerate or simulation system; it only affects how fast levels load.
+    int FastLoadingVSyncBypass = 1;
 
     // [UI_DEBUG]
     int EnableExtraUIOptions = 0;

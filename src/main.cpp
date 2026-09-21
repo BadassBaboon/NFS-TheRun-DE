@@ -40,6 +40,7 @@ DWORD WINAPI MainThread(LPVOID /*lpParam*/) {
     Features::InitNosTuning();
     Features::InitTodRandomizer();
     Features::InitGinsuDiagnostics();
+    Features::InitLoadingVSyncOptimization();
     Features::InitFramerateUnlocker();
 
     Logger::Log("All features initialized successfully.");
