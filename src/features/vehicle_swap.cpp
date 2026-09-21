@@ -34,14 +34,29 @@
 // a tier is chosen by picking the right ENTRY. Nothing is written into any
 // customization template. docs/vehicles.tsv is the full list.
 //
-// THE PLAYER'S OWN CAR IS NOT TOUCHED, and that is settled rather than pending. A
-// cached copy of it sits near the available-car list and can be written, but the
-// game restores it every tick: a test that skipped through three events kept the
-// same Porsche throughout while the log reported the write landing each time. The
-// real source was never found, and mRally2 did not find it either -- their mods
-// change what a gas station OFFERS and let the player swap there. Forcing every
-// entry of the available-car list does work, but it makes a pump show fifty-seven
-// identical cars, which is worse than leaving the player's choice alone.
+// THE PLAYER'S CURRENT CAR IS NOT TOUCHED. A cached copy of it sits near the
+// available-car list and can be written, but the game restores it every tick: a
+// test that skipped through three events kept the same Porsche throughout while
+// the log reported the write landing each time. The real source was never found,
+// and mRally2 did not find it either -- their mods change what a gas station
+// OFFERS and let the player swap there, which is what this does too.
+//
+// WHAT A PUMP OFFERS IS A RESIZABLE LIST, and both its contents and its LENGTH
+// can be set. The list is the player's available-car catalogue, and the three
+// words in front of it are a begin/end/capacity triple:
+//
+//     gas - 0x10   begin      == the array address itself
+//     gas - 0x0C   end        count = (end - begin) / 4
+//     gas - 0x08   capacity   256 entries
+//
+// Confirmed against two captured dumps without further testing: in one, begin ==
+// end and the diagnostic had reported 0 entries; in the other the arithmetic gave
+// exactly the 57 entries it had counted.
+//
+// This is why an earlier attempt produced a pump showing an endless row of
+// identical Golfs. It rewrote the contents of a 57-entry list without touching
+// its length. Writing a short list AND its end pointer gives a pump that offers
+// exactly those cars, once each.
 //
 // THE THREE RUN MODES fill an event from a curated pool instead of forcing one
 // car, which is what All American Run, The Classics Run and The Supercar Run do.
@@ -78,6 +93,37 @@ namespace {
 
     // DOUBLE CROSS: Sergeant Cross's Corvette, che_vet_cbn_10_presale_1.
     const uint32_t kCrossCorvette = 1464376845u;
+
+    // The player's available-car list -- what a gas station offers.
+    //
+    //     [[[[[exe+0x2482500]+0x64]+0x1A8]+0x18]+0x1D8]+0
+    //
+    // Four-byte stride, unlike the opponent array's eight, and preceded by a
+    // begin/end/capacity triple. Only `end` is written, and only to SHRINK: moving
+    // it past `capacity` would hand the game a list longer than its own buffer.
+    const uintptr_t kGasBase = 0x2482500;
+    const uintptr_t kGasOffsets[] = { 0x64, 0x1A8, 0x18, 0x1D8 };
+    const size_t    kGasLength = sizeof(kGasOffsets) / sizeof(kGasOffsets[0]);
+    const uintptr_t kGasStride = 0x4;
+
+    const uintptr_t kGasBeginOffset = 0x10;   // all subtracted from the array
+    const uintptr_t kGasEndOffset   = 0x0C;
+    const uintptr_t kGasCapOffset   = 0x08;
+
+    // What a pump offers in DOUBLE CROSS. Five cars, once each: a spread rather
+    // than one answer to an army of Corvettes. Only what ships -- overridable.
+    const uint32_t kDoubleCrossGasCars[] = {
+        2898082202u,   // che_vet_cbn_10_pp_stock_1   Corvette Z06 Carbon, fire with fire
+         332754079u,   // nis_gtr_v_10_pp_stock_1     Nissan GT-R SpecV
+        2658400503u,   // mcl_mp4_12c_12_pp_stock_1   McLaren MP4-12C
+         686915486u,   // bmw_m3_gts_10_pp_stock_1    BMW M3 GTS
+        1568490548u,   // for_mus_bos_12_pp_stock_1   Mustang Boss 302
+    };
+    const int kDoubleCrossGasCount =
+        sizeof(kDoubleCrossGasCars) / sizeof(kDoubleCrossGasCars[0]);
+
+    uintptr_t g_GasArray = 0;
+    int       g_GasLogged = -1;
 
     // xorshift32. The grid should differ between runs of the same event, which is
     // the whole appeal of the Run mods, and nothing here needs a good distribution
@@ -133,6 +179,61 @@ namespace {
         if (!Readable(arr, sizeof(uint32_t))) return 0;
         *owner = p;
         return arr;
+    }
+
+    uintptr_t ResolveGasArray() {
+        uintptr_t p = Memory::GetGameBase() + kGasBase;
+        if (!Readable(p, sizeof(uintptr_t))) return 0;
+        p = *reinterpret_cast<uintptr_t*>(p);
+        for (size_t i = 0; i < kGasLength; ++i) {
+            uintptr_t next = p + kGasOffsets[i];
+            if (!Readable(next, sizeof(uintptr_t))) return 0;
+            p = *reinterpret_cast<uintptr_t*>(next);
+        }
+        if (!Readable(p, sizeof(uint32_t))) return 0;
+        return p;
+    }
+
+    // Replaces the offered cars AND the list's length, so a pump shows exactly
+    // these and nothing else. Returns the count written, or -1 if it did nothing.
+    //
+    // Rewriting contents without the length is what produced a pump offering an
+    // endless row of identical Golfs: fifty-seven slots, all set to one car.
+    int WriteGasList(uintptr_t gas, const uint32_t* cars, int count) {
+        const uintptr_t beginAt = gas - kGasBeginOffset;
+        const uintptr_t endAt   = gas - kGasEndOffset;
+        const uintptr_t capAt   = gas - kGasCapOffset;
+        if (!Readable(beginAt, sizeof(uint32_t)) || !Readable(endAt, sizeof(uint32_t))
+            || !Readable(capAt, sizeof(uint32_t))) return -1;
+
+        const uintptr_t begin = *reinterpret_cast<uintptr_t*>(beginAt);
+        const uintptr_t cap   = *reinterpret_cast<uintptr_t*>(capAt);
+
+        // begin must actually point at the array we resolved, or this is not the
+        // triple it looks like and nothing should be written.
+        if (begin != gas) return -1;
+
+        // Only act on a list the game has actually populated. This is what scopes
+        // the feature: the catalogue is EMPTY except while a selection screen is
+        // up -- a captured log read 0 entries at event start and 57 at the pump --
+        // so "non-empty" covers gas stations and the story's forced car-select
+        // screens alike, and touches nothing the rest of the time.
+        const uintptr_t curEnd = *reinterpret_cast<uintptr_t*>(endAt);
+        if (curEnd <= begin) return -2;
+        // Never grow past the game's own buffer.
+        if (begin + static_cast<uintptr_t>(count) * kGasStride > cap) return -1;
+
+        for (int i = 0; i < count; ++i) {
+            uintptr_t slot = gas + static_cast<uintptr_t>(i) * kGasStride;
+            if (!Readable(slot, sizeof(uint32_t))) return -1;
+            uint32_t* p = reinterpret_cast<uint32_t*>(slot);
+            if (*p != cars[i]) *p = cars[i];
+        }
+
+        const uintptr_t wantEnd = begin + static_cast<uintptr_t>(count) * kGasStride;
+        uintptr_t* endp = reinterpret_cast<uintptr_t*>(endAt);
+        if (*endp != wantEnd) *endp = wantEnd;
+        return count;
     }
 
     uint32_t ReadPreset(uintptr_t owner) {
@@ -199,6 +300,36 @@ namespace Features {
             (g_Config.ForcedVehicleId != 0) ? 0 : RunModes::ForGameMode(g_Config.GameMode);
         const bool active = (want != 0);
         if (!active && !mode && !g_Config.LogVehicleArray) return;
+
+        // WHAT A PUMP OR A CAR-SELECT SCREEN OFFERS.
+        //
+        // Deliberately handled BEFORE the opponent array, and independently of it.
+        // The story forces a car change at several points -- the Chicago Downtown
+        // select, Uri's car shop and others -- and those screens have no opponents,
+        // so no opponent array exists and an earlier version returned long before
+        // reaching this. Gating on the catalogue being populated instead reaches
+        // both without needing to know which screen is up.
+        if (g_Config.GameMode == 1 && g_Config.ForcedVehicleId == 0) {
+            uintptr_t gas = ResolveGasArray();
+            if (!gas) {
+                g_GasArray = 0;
+                g_GasLogged = -1;
+            } else {
+                const int n = WriteGasList(gas, kDoubleCrossGasCars, kDoubleCrossGasCount);
+                if (g_Config.LogVehicleArray && n != -2
+                    && (gas != g_GasArray || n != g_GasLogged)) {
+                    g_GasArray = gas;
+                    g_GasLogged = n;
+                    if (n < 0) {
+                        Logger::Log("Car list at 0x%08X: the begin/end/capacity triple "
+                                    "did not check out, so nothing was written.", gas);
+                    } else {
+                        Logger::Log("Car list at 0x%08X: offering %d car(s), length set "
+                                    "to match.", gas, n);
+                    }
+                }
+            }
+        }
 
         uintptr_t walk[8] = {0};
         int depth = 0;
