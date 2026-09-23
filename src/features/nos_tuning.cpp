@@ -93,6 +93,19 @@ extern "C" {
     float     g_PlayerNosStrength = 1.0f;
     float     g_PlayerNosBonus    = 1.0f;
     float     g_AiNosRecharge     = 1.0f;
+    // Reward-burst telemetry. Counted in the player cave, once per player frame,
+    // so the ticker can tell whether a near miss pays for a fixed TIME or a fixed
+    // number of FRAMES -- the latter would shrink rewards at high framerates.
+    uint8_t   g_CountNosFrames  = 0;
+    // This frame's dt as passed to the reward call, 0 if implausible. Used only
+    // to report what a reward actually pays. Measured at 1/30 s at both 60 and
+    // 144 FPS: the input state is filled at a fixed 30 Hz, so a near miss pays
+    // the same at any framerate and needs no correction (one was tried in 1.4
+    // development and was a no-op).
+    float     g_NosDt           = 0.0f;
+    uint32_t  g_NosFrames       = 0;
+    uint32_t  g_NosBonusFrames  = 0;
+    float     g_NosBonusSum     = 0.0f;
     uintptr_t g_pPlayerNosReturn = 0;
     uintptr_t g_pAiNosReturn     = 0;
     void PlayerNosHookAsm();
@@ -113,6 +126,31 @@ asm(
     "    flds  0x2A0(%esi)\n"                  // the risky-driving reward
     "    fmuls _g_PlayerNosBonus\n"
     "    fstps 0x2A0(%esi)\n"
+    // Reward-burst telemetry, LogNosAwards only. With it off, the only extra work
+    // is the gate itself, and EFLAGS is saved around that too.
+    "    pushfl\n"                             // nothing here may leak into EFLAGS
+    "    cmpb  $0, _g_CountNosFrames\n"
+    "    je    2f\n"
+    "    pushl %eax\n"                         // or into eax
+    "    movl  $0, _g_NosDt\n"
+    "    movl  8(%ebp), %eax\n"                // the frame's dt, as passed to the reward call
+    "    cmpl  $0x3A83126F, %eax\n"            // below 1 ms (or negative): not a dt
+    "    jl    3f\n"
+    "    cmpl  $0x3DCCCCCD, %eax\n"            // above 100 ms: likewise
+    "    jg    3f\n"
+    "    movl  %eax, _g_NosDt\n"
+    "3:\n"
+    "    popl  %eax\n"
+    "    incl  _g_NosFrames\n"
+    "    testl $0x7FFFFFFF, 0x2A0(%esi)\n"     // any nonzero reward, after all scaling
+    "    jz    2f\n"
+    "    incl  _g_NosBonusFrames\n"
+    "    flds  0x2A0(%esi)\n"
+    "    fmuls _g_NosDt\n"                     // what the bar actually receives
+    "    fadds _g_NosBonusSum\n"
+    "    fstps _g_NosBonusSum\n"               // balanced: one push, one pop
+    "2:\n"
+    "    popfl\n"
     "    jmpl *_g_pPlayerNosReturn\n"
 );
 
@@ -268,6 +306,58 @@ namespace {
         }
     }
 
+    // Groups the cave's counters into bursts: one line per reward, once it ends.
+    // Ticker resolution is ~16 ms, so durations are approximate; the frame count
+    // and the framerate over the burst are exact.
+    // The start of a burst is the state at the PREVIOUS tick: by the time a tick
+    // notices a reward, the cave has already counted it. Snapshotting there made
+    // every one-frame reward -- which is what a near miss is -- log as zero.
+    uint32_t g_PrevFrames = 0, g_PrevBonus = 0;
+    float    g_PrevSum = 0.0f;
+    DWORD    g_PrevMs = 0;
+    uint32_t g_BurstStartFrames = 0, g_BurstStartBonus = 0;
+    float    g_BurstStartSum = 0.0f;
+    DWORD    g_BurstStartMs = 0;
+    bool     g_InBurst = false;
+    bool     g_LoggedDt = false;
+
+    void WatchBursts() {
+        const uint32_t bonusFrames = g_NosBonusFrames;
+        const uint32_t frames = g_NosFrames;
+        const float sum = g_NosBonusSum;
+        const DWORD now = GetTickCount();
+
+        if (!g_LoggedDt && g_NosDt > 0.0f) {
+            Logger::Log("NOS rewards: input-state dt %.4f s (%.0f Hz).",
+                        g_NosDt, 1.0f / g_NosDt);
+            g_LoggedDt = true;
+        }
+
+        if (bonusFrames != g_PrevBonus && !g_InBurst) {
+            g_InBurst = true;
+            g_BurstStartMs = g_PrevMs;
+            g_BurstStartFrames = g_PrevFrames;
+            g_BurstStartBonus = g_PrevBonus;
+            g_BurstStartSum = g_PrevSum;
+        } else if (bonusFrames == g_PrevBonus && g_InBurst) {
+            g_InBurst = false;
+            const float paid = sum - g_BurstStartSum;
+            // Drafting and the like trickle tiny amounts all the time; only a
+            // real reward is worth a line.
+            if (paid >= 0.01f) {
+                const DWORD ms = now - g_BurstStartMs;
+                const uint32_t n = bonusFrames - g_BurstStartBonus;
+                const float fps = ms ? (frames - g_BurstStartFrames) * 1000.0f / ms : 0.0f;
+                Logger::Log("NOS reward: %u frame(s) at ~%.0f fps, paid %.3f (reward x seconds).",
+                            n, fps, paid);
+            }
+        }
+        g_PrevFrames = frames;
+        g_PrevBonus = bonusFrames;
+        g_PrevSum = sum;
+        g_PrevMs = now;
+    }
+
     void InstallSite(const char* name, uintptr_t off, const uint8_t* expect, size_t size,
                      void* cave, uintptr_t* pReturn) {
         uintptr_t addr = Memory::GetGameBase() + off;
@@ -332,6 +422,8 @@ namespace Features {
                             award / (boost > 0.0f ? boost : 1.0f), boost);
                 g_LastReportedAward = award;
             }
+            g_CountNosFrames = 1;
+            WatchBursts();
             WatchRechargeFields();
             WatchDraft();
         }
