@@ -69,8 +69,11 @@ namespace {
     int   g_LastControl = -1;
 }
 
-// Captured by the control-check hook in fps_unlocker.cpp.
-extern "C" uint8_t* g_pHasControl;
+// The validated control state from fps_unlocker.cpp: -1 unknown, 0 no control,
+// 1 driving. Not the raw g_pHasControl pointer, which would be dereferenced here
+// from the ticker thread after the object behind it may have been freed -- the
+// race the control hook now avoids by sampling on the game thread.
+extern "C" int PlayerControlState();
 
 namespace Features {
     void UpdateSettingsProbe() {
@@ -83,7 +86,7 @@ namespace Features {
         DWORD now = GetTickCount();
         DWORD sinceLast = now - g_LastTryMs;
 
-        int ctl = (g_pHasControl != nullptr && *g_pHasControl != 0) ? 1 : 0;
+        int ctl = (PlayerControlState() == 1) ? 1 : 0;
         bool controlChanged = (ctl != g_LastControl);
         g_LastControl = ctl;
 

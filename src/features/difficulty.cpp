@@ -42,9 +42,6 @@ namespace {
     int  g_LastSeen = -1;
 }
 
-// Captured by the control-check hook in fps_unlocker.cpp.
-extern "C" uint8_t* g_pHasControl;
-
 namespace {
     // The RaceAIDifficulty enum: 0 Easy, 1 Normal, 2 Hard, 3 Expert ("Extreme").
     // Returns -1 until the game has set it. File-local: everything outside this

@@ -1425,3 +1425,139 @@ takes far longer than 400 ms.
 Worth noting the ramp is applied to a value the game has already zeroed in the
 air case, so the grace does not hand back draft that was not earned. It only
 decides where the ramp resumes when the slipstream comes back.
+
+## 48. Player car lists: what can be swapped and what cannot
+
+### Gas stations -- WORKS
+
+The gas station reads the player's available-car catalogue:
+
+    [[[[[exe+0x2482500]+0x64]+0x1A8]+0x18]+0x1D8]+0     4-byte stride
+
+The three words in front of it are a begin/end/capacity triple:
+
+    list - 0x10   begin      == the list address itself
+    list - 0x0C   end        count = (end - begin) / 4
+    list - 0x08   capacity   256
+
+Confirmed from two dumps: begin == end when the diagnostic reported 0 entries,
+and (end - begin) / 4 == 57 when it reported 57. Writing the contents AND the end
+pointer gives a pump that offers exactly N cars once each. Writing only the
+contents is what produced an "endless" row of identical Golfs -- 57 slots, one car.
+
+The main menu's view-cars browser reads the SAME list at the SAME address, so
+neither address nor emptiness separates them. What does: the browser runs with no
+event set up (opponent chain unresolved), a gas station runs inside one. The
+write is gated on that. NOT gated on count -- the browser held 57 cars in one
+capture and 167 in another, and unlock cheats change it further.
+
+### Scripted car selects -- CANNOT BE SWAPPED. Do not start this again.
+
+Short version, so nobody else spends an evening on it:
+
+  - The story's forced car changes (1.3 opening garage, 3.53 Vegas dealership,
+    11.C Audi dealership, 12.C Uri's garage) do NOT use the gas station list. Each
+    has its own small list, found and fully understood below.
+  - Rewriting that list does change the badge, the name and the car you receive.
+  - But ONLY among cars the event already loads. The screen preloads 3D previews
+    of its own three to five cars; a car outside that set cannot resolve, so the
+    screen keeps the original badge, the camera freezes, and you get the original
+    car. Tested live with Cross's Corvette -- the result was the 918 RSR.
+  - The previews are level scenery in fixed spots, so even a legal reorder shows
+    the wrong model under each badge.
+  - Making it work would mean streaming extra vehicle assets into the level, a
+    different and much larger problem than editing a list.
+
+Gas stations work because a pump loads the chosen car AFTER selection instead of
+preloading previews. That is the whole difference.
+
+The full investigation follows.
+
+1.3 (opening garage), 3.53 (Vegas dealership), 11.C (Audi dealership after the mob)
+and 12.C (Uri's garage) do NOT read the catalogue. They offer 5, 3, 3 and 3
+scripted cars from their own lists, so the gas-station write never reaches them.
+
+The 1.3 cars are the only five entries in the game named _pp_run_garage_car:
+
+    1165774027  bmw_m3_gts_10_pp_run_garage_car
+    2581711499  nis_240_zg_71_pp_run_garage_car
+    2987408137  she_mus_snk_12_pp_run_garage_car
+    2795743982  che_cam_zl1_13_pp_run_garage_car
+    1687470538  por_991_s_12_pp_run_garage_car
+
+A seeded scan found the list twice while 1.3 was on screen. (The scan was a
+temporary F9 hotkey in the .asi, LogCarSelectScan; it was removed once this
+investigation closed, along with vehicle_ids.h, which only it used.)
+The structured copy:
+
+    +0x00   5              count
+    +0x04   0x99CC4F56     tag
+    +0x08   1165774027     id
+    ...     {tag, id} pairs, 8-byte stride, five of them
+
+The tag's bytes are 56 4F CC 99, the same magic that prefixes vehicle references
+in mRally2's customization-template AOB -- it marks "this is a vehicle ID"
+generally, not something specific to this screen. A second copy held the same
+five ids as a plain 4-byte array with no tags, probably a display copy.
+
+Rewriting those five ids in place would change the offered cars with no change to
+the count. What is missing is ADDRESSING: both copies are heap allocations at
+addresses that differ every load, with no known pointer chain. Options:
+
+  1. Scan on a hotkey. Works, not shippable -- the player presses a key per screen.
+  2. Scan once per level load and cache. ~1.5 s stall per load; needs a
+     level-loaded signal not currently available.
+  3. Walk back from the count word to whatever owns it and build a chain. The
+     right answer, and the most work.
+
+CLOSED -- see "Live testing" below. Scripted selects can only offer cars the event
+already loads, so there is nothing worth building here.
+
+### Live testing with Frida (Vibe-Reverse-Engineering livetools)
+
+The list lives in a generic Frostbite data container: vtable 0x023E3B98, a pointer
+to its payload at +0x10 (and +0x14, +0x18), payload end at +0x24. 104 containers
+share that vtable, but on each select screen exactly ONE has a payload shaped like
+{small count, 0x99CC4F56, id, 0x99CC4F56, id, ...}, so vtable + payload shape
+finds it without knowing which screen is up. 12.C's is the same shape as 1.3's:
+
+    count=3  por_918_rsr_11_pp_stock_1, pag_hua_stk_11_pp_stock_1,
+             lam_ave_700_12_pp_stock_1
+
+No static pointer chain. A walk from 1.3 found two exe statics (exe+0x23D5850,
+exe+0x23D8834) that reached the list through [[root]-0x2C]+0x38, but at 12.C they
+held different values and led nowhere -- generic slots, not owners. The container
+is reloaded from game data every time the event starts, so edits do not survive
+re-entering it.
+
+What the list controls, established by writing it during the event's cutscene:
+
+  1. The NAME and BADGE on screen are read from the list, live.
+  2. The 3D preview models are NOT. They sit in fixed spots placed by the level in
+     the original order, so a reordered list shows, e.g., the RSR model wearing the
+     Aventador badge.
+  3. The car you actually GET is the list's. Selecting the RSR model that showed the
+     Aventador badge gave the Aventador.
+  4. A car the event does not load does NOT work. With Cross's Corvette written into
+     slot 0, the screen kept the Porsche badge, the camera froze, and selecting the
+     slot gave the RSR. The event streams only its own cars' assets, so a foreign ID
+     cannot resolve and the game falls back. Writing foreign cars while the screen
+     was already up froze scrolling for the same reason.
+
+So the most any mod could do here is reorder or subset the event's own three to
+five cars, with previews that no longer match -- not worth shipping. Offering
+arbitrary cars would also need their assets streamed into the level, which is a
+different and much larger problem.
+
+Gas stations work because a pump loads the chosen car after selection rather than
+preloading previews; that is why the override works there and not here.
+
+Lessons worth keeping:
+
+  - The first scan seeded por_911_c4s_11, a Carrera 4S (997.2), because the screen
+    showed "a Porsche 911 Carrera S". The car there is por_991_s_12, a Carrera S
+    (991). Sixteen hits, no list. Seed with the exact entry, not the name on screen.
+  - A dense run of vehicle IDs is not a list if the values ascend: one hit was the
+    game's hash-sorted vehicle registry.
+  - A diagnostic that logs what was WRITTEN hides the number that matters. The
+    count the game HAD is what exposed the 57/167 difference.

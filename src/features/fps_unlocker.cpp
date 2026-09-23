@@ -8,16 +8,12 @@ extern "C" {
     uint32_t* g_pSimTickEnable = nullptr;
     uintptr_t g_pGameTimeReturn = 0;
 
-    // Captured pointer to the PlayerHasVehicleControl byte (game sets/clears it).
-    // Still published because other features read it, but this file no longer
-    // dereferences it -- see the sampled pair below.
-    uint8_t* g_pHasControl = nullptr;
-
     // The control byte SAMPLED INSIDE THE HOOK, on the game's own thread, plus a
     // counter that changes whenever a sample is taken.
     //
-    // Reading g_pHasControl from the ticker was a race. The object it points into
-    // gets freed and its memory reused, and the guard that caught that only
+    // Reading the byte through a captured pointer from the ticker was a race. The
+    // object it points into gets freed and its memory reused, and the guard that
+    // caught that only
     // rejected values which were not 0 or 1 -- it caught the 48 and 176 seen in
     // real logs, but a reused byte that happens to BE 0 or 1 passes as a valid
     // reading and silently leaves the sim-rate logic in the wrong state. Sampling
@@ -49,14 +45,12 @@ asm(
 );
 
 // Hook at exe+3F6C73. Original stolen bytes: cmp byte ptr [esi+04],00 ; push edi.
-// We capture &[esi+04] (the control flag), then re-run the stolen instructions.
+// We sample the control flag at [esi+04], then re-run the stolen instructions.
 asm(
     ".text\n"
     ".globl _ControlCheckHookAsm\n"
     "_ControlCheckHookAsm:\n"
     "    pushl %eax\n"
-    "    leal 0x04(%esi), %eax\n"
-    "    movl %eax, _g_pHasControl\n"
     "    movzbl 0x04(%esi), %eax\n"       // sample it here, on the game's own thread
     "    movb %al, _g_ControlSampleValue\n"
     "    incl _g_ControlSampleCounter\n"  // clobbers flags; the stolen cmpb resets them
@@ -67,7 +61,7 @@ asm(
 );
 
 // Coexist path: the site is already hooked by another mod (e.g. FusionFix places
-// an E9 -> its SafetyHook stub). We capture &[esi+04], preserve ALL register/flag
+// an E9 -> its SafetyHook stub). We sample [esi+04], preserve ALL register/flag
 // state, then chain into that existing stub so both hooks run. The stub replays
 // the original instructions and returns to the game itself.
 asm(
@@ -76,8 +70,6 @@ asm(
     "_ControlChainHookAsm:\n"
     "    pushfl\n"                        // incl below clobbers flags and nothing
     "    pushl %eax\n"                    // downstream re-sets them on this path
-    "    leal 0x04(%esi), %eax\n"
-    "    movl %eax, _g_pHasControl\n"
     "    movzbl 0x04(%esi), %eax\n"
     "    movb %al, _g_ControlSampleValue\n"
     "    incl _g_ControlSampleCounter\n"

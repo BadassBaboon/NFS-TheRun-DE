@@ -58,6 +58,12 @@
 // its length. Writing a short list AND its end pointer gives a pump that offers
 // exactly those cars, once each.
 //
+// THE STORY'S SCRIPTED CAR SELECTS ARE NOT COVERED, and cannot be. The opening
+// garage, the Vegas and Audi dealerships and Uri's garage use a separate per-event
+// list that only accepts cars the event already loads: a foreign ID keeps the old
+// badge, freezes the camera and hands over the original car. docs/RESEARCH.md
+// section 48 has the full investigation -- read it before trying again.
+//
 // THE THREE RUN MODES fill an event from a curated pool instead of forcing one
 // car, which is what All American Run, The Classics Run and The Supercar Run do.
 // The pools and the per-event stage mapping are in run_modes.h; the only logic
@@ -110,20 +116,42 @@ namespace {
     const uintptr_t kGasEndOffset   = 0x0C;
     const uintptr_t kGasCapOffset   = 0x08;
 
-    // What a pump offers in DOUBLE CROSS. Five cars, once each: a spread rather
-    // than one answer to an army of Corvettes. Only what ships -- overridable.
+    // What a pump offers in DOUBLE CROSS, once each. Named in the INI so players
+    // know what the mode hands them.
     const uint32_t kDoubleCrossGasCars[] = {
-        2898082202u,   // che_vet_cbn_10_pp_stock_1   Corvette Z06 Carbon, fire with fire
-         332754079u,   // nis_gtr_v_10_pp_stock_1     Nissan GT-R SpecV
-        2658400503u,   // mcl_mp4_12c_12_pp_stock_1   McLaren MP4-12C
-         686915486u,   // bmw_m3_gts_10_pp_stock_1    BMW M3 GTS
-        1568490548u,   // for_mus_bos_12_pp_stock_1   Mustang Boss 302
+         487380342u,   // bmw_m3_gts_10_presale_1    Most Wanted Edition M3 GTS
+        1147473296u,   // aud_r8_v10_10_presale_1    Darius's Audi R8
+         242635328u,   // dod_chr_taxi_player        Charger Taxi
+        3675475195u,   // for_vic_taxi_player        Crown Vic Taxi
+        3753218205u,   // cop_car_int_11_oos         Decommissioned Cruiser
+        3720220186u,   // vol_gti_mk1_76_pp_rare_1   Kuru Tactics Golf
     };
     const int kDoubleCrossGasCount =
         sizeof(kDoubleCrossGasCars) / sizeof(kDoubleCrossGasCars[0]);
 
+    // Only Double Cross sets a gas station list. The difficulty never does and
+    // the three Run modes leave the pumps alone, so Double Cross on DEADLY gets
+    // these cars plus DEADLY's rules with nothing to arbitrate. A forced vehicle
+    // override turns the mode's car behaviour off, this included.
+    const uint32_t* PlayerCarList(int* count) {
+        if (g_Config.GameMode == 1 && g_Config.ForcedVehicleId == 0) {
+            *count = kDoubleCrossGasCount;
+            return kDoubleCrossGasCars;
+        }
+        *count = 0;
+        return 0;
+    }
+
     uintptr_t g_GasArray = 0;
     int       g_GasLogged = -1;
+    int       g_GasLoggedBefore = -1;   // the count the game had, so a same-size
+                                        // write in a new context still reports
+
+    // How many cars the game had in the list before anything was written, for the
+    // log. Deliberately NOT used to decide anything: the main menu's car browser
+    // reads the same list, and its size changes with progress and unlock cheats.
+    int g_LastSeenCount = 0;
+    int g_ReportedCount = -1;
 
     // xorshift32. The grid should differ between runs of the same event, which is
     // the whole appeal of the Run mods, and nothing here needs a good distribution
@@ -220,6 +248,7 @@ namespace {
         // screens alike, and touches nothing the rest of the time.
         const uintptr_t curEnd = *reinterpret_cast<uintptr_t*>(endAt);
         if (curEnd <= begin) return -2;
+        g_LastSeenCount = static_cast<int>((curEnd - begin) / kGasStride);
         // Never grow past the game's own buffer.
         if (begin + static_cast<uintptr_t>(count) * kGasStride > cap) return -1;
 
@@ -295,46 +324,74 @@ namespace {
 
 namespace Features {
     void UpdateVehicleSwap() {
+
         const uint32_t want = WantedVehicle();
         const RunModes::Mode* mode =
             (g_Config.ForcedVehicleId != 0) ? 0 : RunModes::ForGameMode(g_Config.GameMode);
         const bool active = (want != 0);
         if (!active && !mode && !g_Config.LogVehicleArray) return;
 
-        // WHAT A PUMP OR A CAR-SELECT SCREEN OFFERS.
+        uintptr_t walk[8] = {0};
+        int depth = 0;
+        uintptr_t owner = 0;
+        uintptr_t arr = ResolveArray(walk, &depth, &owner);
+
+        // WHAT THE PLAYER IS OFFERED: gas stations, and the story's forced car
+        // changes -- the opening garage, the Vegas dealership, the Audi dealership
+        // after the mob, Uri's garage.
         //
-        // Deliberately handled BEFORE the opponent array, and independently of it.
-        // The story forces a car change at several points -- the Chicago Downtown
-        // select, Uri's car shop and others -- and those screens have no opponents,
-        // so no opponent array exists and an earlier version returned long before
-        // reaching this. Gating on the catalogue being populated instead reaches
-        // both without needing to know which screen is up.
-        if (g_Config.GameMode == 1 && g_Config.ForcedVehicleId == 0) {
+        // Gated on an EVENT being set up, not on the list being populated. The main
+        // menu's browse-all-cars screen reads the same list at the same address, so
+        // the list itself cannot say which screen is up; what separates them is that
+        // the browse screen runs with no event while the forced selects are numbered
+        // events in their own right (1.3, 3.53, 11.C, 12.C) and should resolve here.
+        //
+        // NOT gated on the car count. An unlock-everything cheat changes how many
+        // cars the browse screen holds, so any threshold would fail on exactly the
+        // setups most likely to have one.
+        int carCount = 0;
+        const uint32_t* cars = PlayerCarList(&carCount);
+        if (cars && carCount > 0 && arr) {
             uintptr_t gas = ResolveGasArray();
             if (!gas) {
                 g_GasArray = 0;
                 g_GasLogged = -1;
             } else {
-                const int n = WriteGasList(gas, kDoubleCrossGasCars, kDoubleCrossGasCount);
+                const int n = WriteGasList(gas, cars, carCount);
                 if (g_Config.LogVehicleArray && n != -2
-                    && (gas != g_GasArray || n != g_GasLogged)) {
+                    && (gas != g_GasArray || n != g_GasLogged
+                        || g_LastSeenCount != g_GasLoggedBefore)) {
                     g_GasArray = gas;
                     g_GasLogged = n;
+                    g_GasLoggedBefore = g_LastSeenCount;
                     if (n < 0) {
                         Logger::Log("Car list at 0x%08X: the begin/end/capacity triple "
                                     "did not check out, so nothing was written.", gas);
                     } else {
-                        Logger::Log("Car list at 0x%08X: offering %d car(s), length set "
-                                    "to match.", gas, n);
+                        Logger::Log("Car list at 0x%08X: event active, game had %d car(s), "
+                                    "now offering %d.", gas, g_LastSeenCount, n);
+                    }
+                }
+            }
+        } else if (cars && carCount > 0 && !arr && g_Config.LogVehicleArray) {
+            // Visible on purpose: if a forced car-select lands here, the gate is
+            // wrong and this is the line that says so.
+            uintptr_t gas = ResolveGasArray();
+            if (gas) {
+                uintptr_t b = gas - kGasBeginOffset, e = gas - kGasEndOffset;
+                if (Readable(b, 4) && Readable(e, 4)) {
+                    uintptr_t bv = *reinterpret_cast<uintptr_t*>(b);
+                    uintptr_t ev = *reinterpret_cast<uintptr_t*>(e);
+                    int have = (bv == gas && ev > bv) ? static_cast<int>((ev - bv) / kGasStride) : 0;
+                    if (have > 0 && have != g_ReportedCount) {
+                        g_ReportedCount = have;
+                        Logger::Log("Car list at 0x%08X: %d car(s) on screen with NO event "
+                                    "set up, so it was left alone. Expected for the main "
+                                    "menu's car browser.", gas, have);
                     }
                 }
             }
         }
-
-        uintptr_t walk[8] = {0};
-        int depth = 0;
-        uintptr_t owner = 0;
-        uintptr_t arr = ResolveArray(walk, &depth, &owner);
 
         if (!arr) {
             g_EventKnown = false;
