@@ -52,7 +52,7 @@ namespace Logger {
             strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S", timeinfo);
 
             fprintf(g_LogFile, "====================================================\n");
-            fprintf(g_LogFile, "  NFS The Run Definitive Edition (NFSTR-DE) v1.0.0  \n");
+            fprintf(g_LogFile, "  NFS The Run Definitive Edition (NFSTR-DE) v1.4     \n");
             fprintf(g_LogFile, "  Log initialized at: %s\n", timeBuf);
             fprintf(g_LogFile, "====================================================\n\n");
             fflush(g_LogFile);

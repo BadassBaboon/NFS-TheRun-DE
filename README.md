@@ -4,6 +4,8 @@
 
 # NFS The Run Definitive Edition
 
+**Version 1.4**
+
 An ASI plugin for **Need for Speed: The Run** (PC, v1.1.0.0) that unlocks the
 framerate, repairs what unlocking it breaks, and adds a difficulty worth the name.
 
