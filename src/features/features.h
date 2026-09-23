@@ -71,6 +71,7 @@ namespace Features {
     // Independent of GameTime and the simulation-rate work: it cannot change the
     // sim step, only how fast loading is paced.
     void InitLoadingVSyncOptimization();
+    void UpdateLoadingVSync();   // diagnostic only (LogNosAwards)
 
     // Relaxes track rules (checkpoint timer, OOB reset, wrong-way respawn).
     // All INI-gated and OFF by default.

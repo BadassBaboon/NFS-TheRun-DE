@@ -49,6 +49,7 @@ DWORD WINAPI MainThread(LPVOID /*lpParam*/) {
     while (true) {
         Features::UpdateFramerateUnlocker();
         Features::UpdateParticleFix();
+        Features::UpdateLoadingVSync();
         Features::UpdateDifficulty();     // decides whether the mode is engaged
         Features::UpdateInputState();     // reads that decision, so it runs after
         Features::UpdateAiDifficulty();

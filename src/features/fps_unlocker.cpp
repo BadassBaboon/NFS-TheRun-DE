@@ -6,6 +6,15 @@
 
 extern "C" {
     uint32_t* g_pSimTickEnable = nullptr;
+
+    // What the game is actually running at, for features whose correction has to
+    // follow the live rate rather than the INI -- the kickup fix above all, which
+    // must be 1.0 while the rate is clamped to 30 and must know the REAL rate when
+    // uncapped, where the INI says nothing useful. g_GameTimeFrames is counted in
+    // the GameTime hook; the other two are published by the ticker.
+    volatile uint32_t g_GameTimeFrames = 0;
+    float g_CurrentFpsCap = 0.0f;        // what MaxVariableFps was last set to
+    float g_MeasuredFps   = 0.0f;        // GameTime hook calls per second, 0 = unknown
     uintptr_t g_pGameTimeReturn = 0;
 
     // The control byte SAMPLED INSIDE THE HOOK, on the game's own thread, plus a
@@ -39,6 +48,9 @@ asm(
     "    leal 0x40(%eax), %edi\n"
     "    movl %edi, _g_pSimTickEnable\n"
     "    popl %edi\n"
+    "    pushfl\n"                        // frame counter for the measured rate;
+    "    incl _g_GameTimeFrames\n"        // flags saved, nothing here may change them
+    "    popfl\n"
     "    movb 0x40(%eax), %cl\n"
     "    movl 0x08(%ebx), %eax\n"
     "    jmpl *_g_pGameTimeReturn\n"
@@ -338,6 +350,24 @@ namespace Features {
 
         if (targetFps > 0.0f && *pMaxVariableFps != targetFps) {
             *pMaxVariableFps = targetFps;
+        }
+        g_CurrentFpsCap = targetFps;
+
+        // Measured rate over half-second windows. Read-only bookkeeping; nothing
+        // in the sim-rate logic above depends on it.
+        {
+            static DWORD windowStart = 0;
+            static uint32_t windowFrames = 0;
+            const DWORD now = GetTickCount();
+            const uint32_t frames = g_GameTimeFrames;
+            if (windowStart == 0) {
+                windowStart = now;
+                windowFrames = frames;
+            } else if (now - windowStart >= 500) {
+                g_MeasuredFps = (frames - windowFrames) * 1000.0f / (now - windowStart);
+                windowStart = now;
+                windowFrames = frames;
+            }
         }
 
         // The field is only ever written when the option is on, and it is driven

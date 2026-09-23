@@ -42,6 +42,10 @@ extern "C" {
     uintptr_t g_pInheritEaxReturn = 0;
     void InheritVelEsiHookAsm();
     void InheritVelEaxHookAsm();
+
+    // The live framerate, published by fps_unlocker.cpp.
+    extern float g_CurrentFpsCap;
+    extern float g_MeasuredFps;
 }
 
 asm(
@@ -71,6 +75,7 @@ namespace {
 
     bool g_Installed = false;
     bool g_LoggedScale = false;
+    float g_LastLoggedScale = 1.0f;
 
     void InstallSite(const char* name, uintptr_t off, const uint8_t* expect,
                      void* cave, uintptr_t* pReturn) {
@@ -112,16 +117,30 @@ namespace Features {
         } else {
             // Auto: the effects were authored at 30 FPS, so undo the ratio between
             // the running framerate and that. At 30 this is 1.0 and changes nothing.
-            float fps = (g_Config.FPSLimit > 0) ? static_cast<float>(g_Config.FPSLimit) : 60.0f;
+            //
+            // The rate is the LIVE one, not the INI's. Reading FPSLimit once was
+            // wrong twice over: uncapped (-1) was guessed as 60, so at a real 250
+            // FPS the spray came out four times too strong, and the clamp to 30
+            // during resets, crashes and cutscenes was never seen, so particles
+            // were damped there when they should have been left alone.
+            //
+            // So: the cap the unlocker set this tick, lowered to the measured rate
+            // when the game cannot reach it (always true uncapped). Falls back to
+            // the INI figure until both are known.
+            float fps = g_CurrentFpsCap;
+            if (fps <= 0.0f) fps = (g_Config.FPSLimit > 0) ? static_cast<float>(g_Config.FPSLimit) : 60.0f;
+            if (g_MeasuredFps > 0.0f && g_MeasuredFps < fps) fps = g_MeasuredFps;
             scale = (fps > 30.0f) ? (30.0f / fps) : 1.0f;
         }
 
         g_InheritVelScale = scale;
-        // Log once. The value comes from config, which cannot change while the game
-        // is running, so there is nothing to report after the first pass.
-        if (!g_LoggedScale) {
-            Logger::Log("Kickup fix: inherited-velocity scale = %.4f", scale);
+        // Logged when it moves by more than 10%, so a clamp or a big swing in
+        // uncapped framerate shows up without a line every tick.
+        if (!g_LoggedScale || scale < g_LastLoggedScale * 0.9f || scale > g_LastLoggedScale * 1.1f) {
+            Logger::Log("Kickup fix: inherited-velocity scale = %.4f (cap %.0f, measured %.0f fps)",
+                        scale, g_CurrentFpsCap, g_MeasuredFps);
             g_LoggedScale = true;
+            g_LastLoggedScale = scale;
         }
     }
 }

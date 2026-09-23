@@ -26,6 +26,8 @@
 
 namespace {
     bool g_Installed = false;
+    volatile uint8_t* g_pFlagA = nullptr;
+    volatile uint8_t* g_pFlagB = nullptr;
 
     constexpr uintptr_t kImageBase = 0x00400000;
     constexpr uintptr_t kFlagAAbs  = 0x02714099;
@@ -57,6 +59,8 @@ namespace {
         return Memory::PatchBytes(address, &value, 1);
     }
 }
+
+extern "C" int PlayerControlState();
 
 namespace Features {
     void InitLoadingVSyncOptimization() {
@@ -128,6 +132,27 @@ namespace Features {
         }
 
         g_Installed = true;
+        g_pFlagA = reinterpret_cast<volatile uint8_t*>(flagA);
+        g_pFlagB = reinterpret_cast<volatile uint8_t*>(flagB);
         Logger::Log("Fast-loading VSync bypass applied to the game's hardcoded display path (mRally2 port; no GameTime changes).");
+    }
+
+    // Research only: reports the two flags the patched routine writes. Reads, never
+    // writes.
+    //
+    // Confining the bypass to loading was tried and does not work. The routine
+    // runs ONCE, at startup, so re-patching it later does nothing; and driving
+    // flag A back to the game's 1 while the player had control locked the game
+    // to 30 FPS within a second. A is part of the game's own 30 FPS pacing, not
+    // a refresh-rate VSync, so it has to stay 0 for the framerate unlock to work
+    // at all. The bypass stays permanent.
+    void UpdateLoadingVSync() {
+        if (!g_Installed || !g_Config.LogNosAwards) return;
+        static int lastA = -1, lastB = -1;
+        const int a = *g_pFlagA, b = *g_pFlagB;
+        if (a == lastA && b == lastB) return;
+        Logger::Log("Display flags: A=%d B=%d (control %d).", a, b, PlayerControlState());
+        lastA = a;
+        lastB = b;
     }
 }
