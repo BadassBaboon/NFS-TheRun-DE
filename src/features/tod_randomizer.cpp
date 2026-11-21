@@ -51,16 +51,23 @@ asm(
     ".text\n"
     ".globl _TodHookAsm\n"
     "_TodHookAsm:\n"
+    "    pushfl\n"
     "    cmpb $0, _g_TodMode\n"
     "    je   1f\n"
     "    pushal\n"
-    "    pushfl\n"
-    "    pushl %eax\n"                    // the object; preset at +0x64, GUID at -4
+    // A C callback (including Windows APIs it calls) can clobber SSE/x87.
+    // EBX is callee-saved and anchors the original stack while aligning the call.
+    "    movl %esp, %ebx\n"
+    "    andl $-16, %esp\n"
+    "    subl $528, %esp\n"
+    "    fxsave 16(%esp)\n"
+    "    movl %eax, (%esp)\n"
     "    call _TodRandomizeC\n"
-    "    addl $4, %esp\n"
-    "    popfl\n"
+    "    fxrstor 16(%esp)\n"
+    "    movl %ebx, %esp\n"
     "    popal\n"
     "1:\n"
+    "    popfl\n"
     "    movl 0x64(%eax), %ecx\n"         // the two instructions this replaced
     "    pushl $1\n"
     "    jmpl *_g_pTodReturn\n"

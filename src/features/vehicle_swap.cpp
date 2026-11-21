@@ -193,13 +193,13 @@ namespace {
         *depth = 0; *owner = 0;
         uintptr_t p = Memory::GetGameBase() + kChainBase;
         if (!Readable(p, sizeof(uintptr_t))) return 0;
-        p = *reinterpret_cast<uintptr_t*>(p);
+        if (!Memory::Read(p, p)) return 0;
         walk[(*depth)++] = p;
 
         for (size_t i = 0; i < kChainLength; ++i) {
             uintptr_t next = p + kChainOffsets[i];
             if (!Readable(next, sizeof(uintptr_t))) return 0;
-            p = *reinterpret_cast<uintptr_t*>(next);
+            if (!Memory::Read(next, p)) return 0;
             walk[(*depth)++] = p;
         }
 
@@ -212,11 +212,11 @@ namespace {
     uintptr_t ResolveGasArray() {
         uintptr_t p = Memory::GetGameBase() + kGasBase;
         if (!Readable(p, sizeof(uintptr_t))) return 0;
-        p = *reinterpret_cast<uintptr_t*>(p);
+        if (!Memory::Read(p, p)) return 0;
         for (size_t i = 0; i < kGasLength; ++i) {
             uintptr_t next = p + kGasOffsets[i];
             if (!Readable(next, sizeof(uintptr_t))) return 0;
-            p = *reinterpret_cast<uintptr_t*>(next);
+            if (!Memory::Read(next, p)) return 0;
         }
         if (!Readable(p, sizeof(uint32_t))) return 0;
         return p;
@@ -234,8 +234,8 @@ namespace {
         if (!Readable(beginAt, sizeof(uint32_t)) || !Readable(endAt, sizeof(uint32_t))
             || !Readable(capAt, sizeof(uint32_t))) return -1;
 
-        const uintptr_t begin = *reinterpret_cast<uintptr_t*>(beginAt);
-        const uintptr_t cap   = *reinterpret_cast<uintptr_t*>(capAt);
+        uintptr_t begin = 0, cap = 0;
+        if (!Memory::Read(beginAt, begin) || !Memory::Read(capAt, cap)) return -1;
 
         // begin must actually point at the array we resolved, or this is not the
         // triple it looks like and nothing should be written.
@@ -246,29 +246,33 @@ namespace {
         // up -- a captured log read 0 entries at event start and 57 at the pump --
         // so "non-empty" covers gas stations and the story's forced car-select
         // screens alike, and touches nothing the rest of the time.
-        const uintptr_t curEnd = *reinterpret_cast<uintptr_t*>(endAt);
+        uintptr_t curEnd = 0;
+        if (!Memory::Read(endAt, curEnd) || cap < begin || curEnd > cap ||
+            (cap - begin) % kGasStride || (curEnd - begin) % kGasStride) return -1;
         if (curEnd <= begin) return -2;
         g_LastSeenCount = static_cast<int>((curEnd - begin) / kGasStride);
         // Never grow past the game's own buffer.
-        if (begin + static_cast<uintptr_t>(count) * kGasStride > cap) return -1;
+        if (count <= 0 || static_cast<uintptr_t>(count) > (cap - begin) / kGasStride) return -1;
 
         for (int i = 0; i < count; ++i) {
             uintptr_t slot = gas + static_cast<uintptr_t>(i) * kGasStride;
             if (!Readable(slot, sizeof(uint32_t))) return -1;
-            uint32_t* p = reinterpret_cast<uint32_t*>(slot);
-            if (*p != cars[i]) *p = cars[i];
+            uint32_t current;
+            if (!Memory::Read(slot, current)) return -1;
+            if (current != cars[i] && !Memory::Write(slot, cars[i])) return -1;
         }
 
         const uintptr_t wantEnd = begin + static_cast<uintptr_t>(count) * kGasStride;
-        uintptr_t* endp = reinterpret_cast<uintptr_t*>(endAt);
-        if (*endp != wantEnd) *endp = wantEnd;
+        if (curEnd != wantEnd && !Memory::Write(endAt, wantEnd)) return -1;
         return count;
     }
 
     uint32_t ReadPreset(uintptr_t owner) {
         uintptr_t a = owner - kPresetOffset;
         if (!Readable(a, sizeof(uint32_t))) return 0;
-        return *reinterpret_cast<uint32_t*>(a);
+        uint32_t value = 0;
+        Memory::Read(a, value);
+        return value;
     }
 
     // Which single car the active mode puts in every slot, or 0 if this mode draws
@@ -306,8 +310,9 @@ namespace {
         for (int i = 0; i < kMaxSlotsLogged; ++i) {
             uintptr_t slot = arr + static_cast<uintptr_t>(i) * kSlotStride;
             if (!Readable(slot, sizeof(uint32_t))) break;
-            int w = _snprintf(line + n, sizeof(line) - n, " %u",
-                              *reinterpret_cast<uint32_t*>(slot));
+            uint32_t value;
+            if (!Memory::Read(slot, value)) break;
+            int w = _snprintf(line + n, sizeof(line) - n, " %u", value);
             if (w < 0 || n + w >= static_cast<int>(sizeof(line)) - 16) break;
             n += w;
         }
@@ -380,8 +385,9 @@ namespace Features {
             if (gas) {
                 uintptr_t b = gas - kGasBeginOffset, e = gas - kGasEndOffset;
                 if (Readable(b, 4) && Readable(e, 4)) {
-                    uintptr_t bv = *reinterpret_cast<uintptr_t*>(b);
-                    uintptr_t ev = *reinterpret_cast<uintptr_t*>(e);
+                    uintptr_t bv = 0, ev = 0;
+                    Memory::Read(b, bv);
+                    Memory::Read(e, ev);
                     int have = (bv == gas && ev > bv) ? static_cast<int>((ev - bv) / kGasStride) : 0;
                     if (have > 0 && have != g_ReportedCount) {
                         g_ReportedCount = have;
@@ -435,7 +441,7 @@ namespace Features {
         bool isNewEvent = (!g_EventKnown || arr != g_EventArray || preset != g_EventPreset);
         uint32_t slot0 = 0;
         if (isNewEvent) {
-            slot0 = *reinterpret_cast<uint32_t*>(arr);
+            if (!Memory::Read(arr, slot0)) return;
             g_EventSlots = EventTable::SlotsFor(slot0);
             g_EventArray = arr;
             g_EventPreset = preset;
@@ -478,9 +484,10 @@ namespace Features {
             for (int i = 0; i < slots; ++i) {
                 uintptr_t slot = arr + static_cast<uintptr_t>(i) * kSlotStride;
                 if (!Readable(slot, sizeof(uint32_t))) break;
-                uint32_t* p = reinterpret_cast<uint32_t*>(slot);
+                uint32_t current;
+                if (!Memory::Read(slot, current)) break;
                 uint32_t v = mode ? (g_DrawValid ? g_Draw[i] : 0) : want;
-                if (v != 0 && *p != v) *p = v;
+                if (v != 0 && current != v && !Memory::Write(slot, v)) break;
             }
         }
 

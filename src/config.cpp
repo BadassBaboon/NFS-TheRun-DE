@@ -2,6 +2,10 @@
 #include "logger.h"
 #include <windows.h>
 #include <cstdlib>
+#include <cstdio>
+#include <cmath>
+#include <cerrno>
+#include <cctype>
 
 ConfigStruct g_Config;
 
@@ -11,7 +15,12 @@ namespace {
         char outBuf[64];
         snprintf(defBuf, sizeof(defBuf), "%g", def);
         GetPrivateProfileStringA(section, key, defBuf, outBuf, sizeof(outBuf), iniPath);
-        return static_cast<float>(atof(outBuf));
+        char* end = nullptr;
+        errno = 0;
+        const float value = std::strtof(outBuf, &end);
+        if (end == outBuf || errno == ERANGE || !std::isfinite(value)) return def;
+        while (*end && std::isspace(static_cast<unsigned char>(*end))) ++end;
+        return *end ? def : value;
     }
 }
 
@@ -24,7 +33,6 @@ namespace Config {
         g_Config.FPSLimit             = GetPrivateProfileIntA("GRAPHICS_FPS", "FPSLimit",            60, iniPath);
         g_Config.UnlockCutsceneFPS    = GetPrivateProfileIntA("GRAPHICS_FPS", "UnlockCutsceneFPS",   0,  iniPath);
         g_Config.ClampSimRateWhenNoControl = GetPrivateProfileIntA("GRAPHICS_FPS", "ClampSimRateWhenNoControl", 1, iniPath);
-        g_Config.FastLoadingVSyncBypass    = GetPrivateProfileIntA("GRAPHICS_FPS", "FastLoadingVSyncBypass",    1, iniPath);
         g_Config.EnableExtraUIOptions = GetPrivateProfileIntA("UI_DEBUG",     "EnableExtraUIOptions", 0,  iniPath);
         g_Config.AlwaysShowPhotoMode  = GetPrivateProfileIntA("UI_DEBUG",     "AlwaysShowPhotoMode",  1,  iniPath);
 
@@ -78,6 +86,11 @@ namespace Config {
         g_Config.LogVehicleArray       = GetPrivateProfileIntA("DIAGNOSTICS",    "LogVehicleArray",       0, iniPath);
         g_Config.LogGinsuDiagnostics   = GetPrivateProfileIntA("DIAGNOSTICS",    "LogGinsuDiagnostics",   0, iniPath);
         g_Config.LogSettingsContainers = GetPrivateProfileIntA("DIAGNOSTICS",    "LogSettingsContainers", 0, iniPath);
+
+        if (g_Config.FPSLimit != -1 && g_Config.FPSLimit <= 0) g_Config.FPSLimit = 60;
+        if (g_Config.GameMode < 0 || g_Config.GameMode > 4) g_Config.GameMode = 0;
+        if (g_Config.RandomizeTimeOfDay < 0 || g_Config.RandomizeTimeOfDay > 2)
+            g_Config.RandomizeTimeOfDay = 0;
     }
 
     void LogSummary() {
@@ -86,9 +99,8 @@ namespace Config {
             g_Config.DebugLog, g_Config.FPSLimit, g_Config.UnlockCutsceneFPS,
             g_Config.EnableExtraUIOptions);
         Logger::Log("  AlwaysShowPhotoMode=%d", g_Config.AlwaysShowPhotoMode);
-        Logger::Log("  EnableFramerateUnlocker=%d  ClampSimRateWhenNoControl=%d  FastLoadingVSyncBypass=%d",
-            g_Config.EnableFramerateUnlocker, g_Config.ClampSimRateWhenNoControl,
-            g_Config.FastLoadingVSyncBypass);
+        Logger::Log("  EnableFramerateUnlocker=%d  ClampSimRateWhenNoControl=%d",
+            g_Config.EnableFramerateUnlocker, g_Config.ClampSimRateWhenNoControl);
         Logger::Log("  DisableCheckpointTimer=%d  DisableResetOOB=%d  DisableWrongWayRespawn=%d",
             g_Config.DisableCheckpointTimer, g_Config.DisableResetOOB, g_Config.DisableWrongWayRespawn);
         Logger::Log("  EnableTrafficControls=%d  TrafficDensityScale=%.3f  TrafficMaxDensity=%.3f  TrafficVehicleLimit=%d",

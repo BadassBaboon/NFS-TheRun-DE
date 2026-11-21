@@ -61,12 +61,12 @@ namespace {
     uintptr_t ResolveVehicle() {
         uintptr_t p = Memory::GetGameBase() + kChainBase;
         if (!Readable(p, sizeof(uintptr_t))) return 0;
-        p = *reinterpret_cast<uintptr_t*>(p);
+        if (!Memory::Read(p, p)) return 0;
 
         for (size_t i = 0; i < kChainLength; ++i) {
             uintptr_t next = p + kChainOffsets[i];
             if (!Readable(next, sizeof(uintptr_t))) return 0;
-            p = *reinterpret_cast<uintptr_t*>(next);
+            if (!Memory::Read(next, p)) return 0;
         }
 
         if (!Readable(p + kOffHealth, sizeof(float))) return 0;
@@ -85,8 +85,9 @@ namespace Features {
         uintptr_t vehicle = ResolveVehicle();
         if (!vehicle) return;
 
-        float* health = reinterpret_cast<float*>(vehicle + kOffHealth);
-        float current = *health;
+        const uintptr_t health = vehicle + kOffHealth;
+        float current = 0.0f;
+        if (!Memory::Read(health, current)) return;
 
         // Exactly zero is a real reading, not a bad pointer: a wrecked car sits at
         // zero, and so does one between events before the next is initialised.
@@ -136,9 +137,9 @@ namespace Features {
         // leaving damage itself working normally. It also re-applies by itself
         // after a respawn, when the game resets health to 100.
         if (rfyl) {
-            if (current > target) *health = target;
+            if (current > target) Memory::Write(health, target);
         } else if (current != target) {
-            *health = target;
+            Memory::Write(health, target);
         }
     }
 }

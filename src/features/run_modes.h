@@ -304,6 +304,7 @@ namespace RunModes {
 
     // GameMode 2, 3 and 4 select these in order. Anything else has no pool.
     inline const Mode* ForGameMode(int gameMode) {
+        if (gameMode < 2 || gameMode > 4) return 0;
         int i = gameMode - 2;
         if (i < 0 || static_cast<size_t>(i) >= kModeCount) return 0;
         return &kModes[i];

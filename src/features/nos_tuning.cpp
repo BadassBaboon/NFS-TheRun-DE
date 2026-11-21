@@ -4,6 +4,7 @@
 #include "../logger.h"
 #include <windows.h>
 #include <cstdint>
+#include <cstring>
 
 // Nitrous tuning: scarcer and weaker for the player, more plentiful for the AI.
 //
@@ -257,7 +258,8 @@ namespace {
 
         // Not the player's car any more. Skip rather than report an AI car's
         // nitrous economy under a heading that says "player".
-        if (*reinterpret_cast<uint8_t*>(s + kOffIsHumanPlayer) == 0) return;
+        uint8_t isHuman = 0;
+        if (!Memory::Read(s + kOffIsHumanPlayer, isHuman) || !isHuman) return;
 
         const uintptr_t offs[4] = { kOffRechargeOverride, kOffRechargeBonus,
                                     kOffRechargeScalar, kOffStrengthScalar };
@@ -266,7 +268,7 @@ namespace {
         float now[4];
         bool changed = false;
         for (int i = 0; i < 4; ++i) {
-            now[i] = *reinterpret_cast<float*>(s + offs[i]);
+            if (!Memory::Read(s + offs[i], now[i])) return;
             // Reject readings that cannot be real. The isHumanPlayer gate above
             // catches most foreign objects, but freed memory can happen to carry
             // a nonzero byte at that offset and slip through — a run produced
@@ -384,7 +386,11 @@ namespace Features {
             && g_Config.AiNosRechargeScale == 1.0f) return;
         InstallSite("player", kSitePlayer, kExpectPlayer, sizeof(kExpectPlayer),
                     reinterpret_cast<void*>(PlayerNosHookAsm), &g_pPlayerNosReturn);
-        InstallSite("ai",     kSiteAi,     kExpectAi,     sizeof(kExpectAi),
+        uint8_t expectedAi[sizeof(kExpectAi)];
+        std::memcpy(expectedAi, kExpectAi, sizeof(expectedAi));
+        const uint32_t constantAddress = static_cast<uint32_t>(Memory::GetGameBase() + 0x1FDE148);
+        std::memcpy(expectedAi + 4, &constantAddress, sizeof(constantAddress));
+        InstallSite("ai",     kSiteAi,     expectedAi,     sizeof(expectedAi),
                     reinterpret_cast<void*>(AiNosHookAsm),     &g_pAiNosReturn);
         InstallSite("boost",  kSiteBoost,  kExpectBoost,  sizeof(kExpectBoost),
                     reinterpret_cast<void*>(PlayerNosBoostHookAsm), &g_pNosBoostReturn);

@@ -101,7 +101,10 @@ extern "C" void GinsuDiagSample(void* player) {
     DWORD dt  = now - t->lastLogMs;
     if (dt < 1000) return;
 
-    int32_t posDelta = playbackPos - t->lastPlaybackPos;
+    // Subtract in 64 bits: a voice can wrap/restart its signed playback position.
+    const int64_t delta = static_cast<int64_t>(playbackPos) - t->lastPlaybackPos;
+    const int32_t posDelta = (delta >= INT32_MIN && delta <= INT32_MAX)
+                          ? static_cast<int32_t>(delta) : 0;
     float advance  = posDelta * 1000.0f / static_cast<float>(dt);
     float callRate = t->calls  * 1000.0f / static_cast<float>(dt);
 
@@ -126,9 +129,14 @@ asm(
     "    pushal\n"
     "    pushfl\n"
     "    movl 0x28(%esp), %eax\n"
-    "    pushl %eax\n"
+    "    movl %esp, %ebx\n"
+    "    andl $-16, %esp\n"
+    "    subl $528, %esp\n"
+    "    fxsave 16(%esp)\n"
+    "    movl %eax, (%esp)\n"
     "    call _GinsuDiagSample\n"
-    "    addl $4, %esp\n"
+    "    fxrstor 16(%esp)\n"
+    "    movl %ebx, %esp\n"
     "    popfl\n"
     "    popal\n"
     "    subl $0x24, %esp\n"        // stolen: 83 EC 24

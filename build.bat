@@ -1,10 +1,12 @@
 @echo off
+setlocal
+pushd "%~dp0"
 echo Building NFS The Run Definitive Edition (.asi) with MinGW...
 
-set GXX=C:\MinGW\bin\g++.exe
+if not defined GXX set "GXX=C:\MinGW\bin\g++.exe"
 set OUT=NFSTR_DefinitiveEdition.asi
 
-%GXX% -shared -O2 -std=c++17 -m32 -Wall -Wextra ^
+"%GXX%" -shared -O2 -std=c++17 -m32 -D_WIN32_WINNT=0x0601 -Wall -Wextra ^
     src/main.cpp ^
     src/logger.cpp ^
     src/config.cpp ^
@@ -14,7 +16,6 @@ set OUT=NFSTR_DefinitiveEdition.asi
     src/features/extra_ui.cpp ^
     src/features/photo_mode.cpp ^
     src/features/fps_unlocker.cpp ^
-    src/features/loading_vsync.cpp ^
     src/features/track_rules.cpp ^
     src/features/vehicle_swap.cpp ^
     src/features/traffic.cpp ^
@@ -33,10 +34,13 @@ set OUT=NFSTR_DefinitiveEdition.asi
     -lpsapi -lkernel32 -luser32 ^
     -static-libgcc -static-libstdc++
 
-if %ERRORLEVEL% EQU 0 (
+set "BUILD_RESULT=%ERRORLEVEL%"
+if %BUILD_RESULT% EQU 0 (
     echo.
     echo BUILD SUCCESSFUL: %OUT% created!
 ) else (
     echo.
-    echo BUILD FAILED with error level %ERRORLEVEL%
+    echo BUILD FAILED with error level %BUILD_RESULT%
 )
+popd
+exit /b %BUILD_RESULT%

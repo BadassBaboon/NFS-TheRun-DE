@@ -5,7 +5,7 @@
 #include <windows.h>
 
 extern "C" {
-    uint32_t* g_pSimTickEnable = nullptr;
+    uint8_t* volatile g_pSimTickEnable = nullptr;
 
     // What the game is actually running at, for features whose correction has to
     // follow the live rate rather than the INI -- the kickup fix above all, which
@@ -164,6 +164,7 @@ namespace Features {
             Logger::Log("GameTime hook injected successfully at 0x%08X", hookAddr);
         } else {
             Logger::Log("GameTime hook failed at 0x%08X", hookAddr);
+            return;
         }
 
 
@@ -237,14 +238,17 @@ namespace Features {
             g_ControlHookAttempted = true;
         }
 
-        if (!g_pSimTickEnable) return;
+        const uintptr_t simTickAddress = reinterpret_cast<uintptr_t>(g_pSimTickEnable);
+        if (simTickAddress < 0x10000) return;
+        uint8_t tickEnabled = 0;
+        float currentFps = 0.0f;
+        if (!Memory::Read(simTickAddress, tickEnabled) ||
+            !Memory::Read(simTickAddress - 0x18, currentFps)) return;
 
         if (!g_LogCapturedHook) {
             Logger::Log("GameTime hook active: g_pSimTickEnable pointer captured at 0x%08X", reinterpret_cast<uintptr_t>(g_pSimTickEnable));
             g_LogCapturedHook = true;
         }
-
-        float* pMaxVariableFps = reinterpret_cast<float*>(reinterpret_cast<uintptr_t>(g_pSimTickEnable) - 0x18);
 
         // Apply target FPS Limit
         float targetFps = (g_Config.FPSLimit == -1) ? 1000.0f : static_cast<float>(g_Config.FPSLimit);
@@ -348,8 +352,9 @@ namespace Features {
             targetFps = kBaseSimRate;
         }
 
-        if (targetFps > 0.0f && *pMaxVariableFps != targetFps) {
-            *pMaxVariableFps = targetFps;
+        if (targetFps > 0.0f && currentFps != targetFps) {
+            if (!Memory::Write(simTickAddress - 0x18, targetFps)) return;
+            currentFps = targetFps;
         }
         g_CurrentFpsCap = targetFps;
 
@@ -377,9 +382,10 @@ namespace Features {
         // first cutscene onwards. Writing it unconditionally is also avoided, so
         // with the option off the game owns the field exactly as it always did.
         if (g_Config.UnlockCutsceneFPS) {
-            const uint32_t want = cutsceneUnlock ? 1u : 0u;
-            if (*g_pSimTickEnable != want) {
-                *g_pSimTickEnable = want;
+            const uint8_t want = cutsceneUnlock ? 1u : 0u;
+            if (tickEnabled != want) {
+                if (!Memory::Write(simTickAddress, want)) return;
+                tickEnabled = want;
             }
             if (!g_WarnedCutsceneConflict) {
                 Logger::Log("UnlockCutsceneFPS is ON: the variable sim tick is enabled only after "
@@ -392,9 +398,9 @@ namespace Features {
 
 
         // Log changes to FPS or tick state
-        if (*pMaxVariableFps != g_LastLoggedFps || *g_pSimTickEnable != g_LastLoggedTickEnable) {
-            g_LastLoggedFps = *pMaxVariableFps;
-            g_LastLoggedTickEnable = *g_pSimTickEnable;
+        if (currentFps != g_LastLoggedFps || tickEnabled != g_LastLoggedTickEnable) {
+            g_LastLoggedFps = currentFps;
+            g_LastLoggedTickEnable = tickEnabled;
             Logger::Log("GameTime state updated: MaxVariableFps = %.1f, VariableSimTickEnable = %u", g_LastLoggedFps, g_LastLoggedTickEnable);
         }
     }

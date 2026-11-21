@@ -108,7 +108,8 @@ namespace Features {
 
         uintptr_t base = Memory::GetGameBase();
         uintptr_t mgrSlot = base + kSettingsManagerPtr;
-        uintptr_t mgr = *reinterpret_cast<uintptr_t*>(mgrSlot);
+        uintptr_t mgr = 0;
+        if (!Memory::Read(mgrSlot, mgr)) return;
 
         Logger::Log("=== Settings containers (attempt %d, %ums since last, driving=%d) ===",
                     g_Attempts, sinceLast, ctl);
@@ -121,26 +122,20 @@ namespace Features {
 
         GetContainerFn getContainer = reinterpret_cast<GetContainerFn>(base + kGetContainerFn);
 
-        // Try both interpretations of the symbol: the value stored at the slot, and
-        // the slot address itself (in case g_settingsManager IS the object). Whichever
-        // resolves GameTimeSettings to the known-good [0x02753F20] is the right one.
-        uintptr_t knownGood = *reinterpret_cast<uintptr_t*>(base + 0x2353F20); // GameTimeSettings
+        // The game passes the value stored in this slot as `this`. Never call a
+        // game function with the slot itself as a speculative fallback object.
+        uintptr_t knownGood = 0;
+        if (!Memory::Read(base + 0x2353F20, knownGood)) return; // GameTimeSettings
         Logger::Log("  reference: GameTimeSettings via cached ptr = 0x%08X", knownGood);
 
-        uintptr_t thisCandidates[2] = { mgr, mgrSlot };
-        int good = -1;
-        for (int i = 0; i < 2 && good < 0; ++i) {
-            uintptr_t got = getContainer(thisCandidates[i], 0, base + kClasses[kClassCount - 1].typeInfo);
-            if (got != 0 && got == knownGood) good = i;
-        }
-        if (good < 0) {
-            Logger::Log("  cannot resolve containers with either form of `this`; will retry.");
+        if (!knownGood || getContainer(mgr, 0, base + kClasses[kClassCount - 1].typeInfo) != knownGood) {
+            Logger::Log("  cannot validate the settings manager; will retry.");
             return;
         }
 
         int found = 0, missing = 0;
         for (int i = 0; i < kClassCount; ++i) {
-            uintptr_t container = getContainer(thisCandidates[good], 0, base + kClasses[i].typeInfo);
+            uintptr_t container = getContainer(mgr, 0, base + kClasses[i].typeInfo);
             if (container >= 0x10000) {
                 ++found;
                 if (!g_Resolved[i]) {           // only report the first time it appears

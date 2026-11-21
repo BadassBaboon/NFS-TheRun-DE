@@ -43,6 +43,10 @@ whenever you have no control of the car, which is exactly when QTEs and cutscene
 play, and restores your target framerate the moment you are driving.
 
 `UnlockCutsceneFPS` trades that fix for smooth cutscenes, and is off by default.
+The former `FastLoadingVSyncBypass` has been removed following reports of QTE
+crashes. Old INI entries are ignored; the game's display/VSync setup stays stock.
+Loading times and achievable FPS may differ from versions using that bypass.
+
 The engine's only lever here is the variable sim tick, which is what breaks
 physics, audio and input at high framerates — so rather than switching it on, the
 mod enables it only after control has been gone for a second and a half, and

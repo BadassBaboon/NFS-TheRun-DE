@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.10)
 project(NFSTR_DefinitiveEdition C CXX)
 
+if(NOT WIN32 OR NOT MINGW OR NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
+    message(FATAL_ERROR "Use a 32-bit MinGW toolchain; the detours require GNU x86 assembly.")
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -15,7 +19,6 @@ set(SOURCES
     src/features/extra_ui.cpp
     src/features/photo_mode.cpp
     src/features/fps_unlocker.cpp
-    src/features/loading_vsync.cpp
     src/features/track_rules.cpp
     src/features/vehicle_swap.cpp
     src/features/traffic.cpp
@@ -33,6 +36,10 @@ set(SOURCES
 )
 
 add_library(NFSTR_DefinitiveEdition SHARED ${SOURCES})
+target_compile_options(NFSTR_DefinitiveEdition PRIVATE -Wall -Wextra)
+target_compile_definitions(NFSTR_DefinitiveEdition PRIVATE _WIN32_WINNT=0x0601)
+set_property(TARGET NFSTR_DefinitiveEdition APPEND_STRING PROPERTY LINK_FLAGS
+    " -static-libgcc -static-libstdc++")
 
 # Target as .asi extension (Win32 DLL)
 set_target_properties(NFSTR_DefinitiveEdition PROPERTIES

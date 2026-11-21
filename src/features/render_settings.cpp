@@ -49,13 +49,13 @@ namespace {
     bool g_LoggedApply = false;
 
     inline void WriteFloat(uintptr_t base, uintptr_t off, float v) {
-        float* p = reinterpret_cast<float*>(base + off);
-        if (*p != v) *p = v;
+        float current;
+        if (Memory::Read(base + off, current) && current != v) Memory::Write(base + off, v);
     }
     inline void WriteBool(uintptr_t base, uintptr_t off, bool v) {
-        uint8_t* p = reinterpret_cast<uint8_t*>(base + off);
-        uint8_t want = v ? 1 : 0;
-        if (*p != want) *p = want;
+        uint8_t current;
+        const uint8_t want = v ? 1 : 0;
+        if (Memory::Read(base + off, current) && current != want) Memory::Write(base + off, want);
     }
 }
 
@@ -86,7 +86,8 @@ namespace {
     // render classes means "not until a level is loaded".
     uintptr_t ResolveContainer(uintptr_t typeInfoOffset) {
         uintptr_t gameBase = Memory::GetGameBase();
-        uintptr_t mgr = *reinterpret_cast<uintptr_t*>(gameBase + kSettingsManagerPtr);
+        uintptr_t mgr = 0;
+        if (!Memory::Read(gameBase + kSettingsManagerPtr, mgr)) return 0;
         if (mgr < 0x10000) return 0;
 
         GetContainerFn getContainer =
@@ -103,8 +104,8 @@ namespace {
     bool g_LoggedWorld = false;
 
     inline void WriteInt(uintptr_t base, uintptr_t off, int v) {
-        int32_t* p = reinterpret_cast<int32_t*>(base + off);
-        if (*p != v) *p = v;
+        int32_t current;
+        if (Memory::Read(base + off, current) && current != v) Memory::Write(base + off, v);
     }
 
     void ApplyWorldRender() {
@@ -143,10 +144,12 @@ namespace {
         uintptr_t s = ResolveContainer(kShaderSystemTypeInfo);
         if (!s) return;
 
+        int32_t previous;
+        if (!Memory::Read(s + kOffMaxAnisotropy, previous)) return;
         if (!g_LoggedShader) {
             Logger::Log("Anisotropic filtering: ShaderSystemSettings at 0x%08X, MaxAnisotropy -> %d (was %d).",
                         s, g_Config.AnisotropicFiltering,
-                        *reinterpret_cast<int32_t*>(s + kOffMaxAnisotropy));
+                        previous);
             g_LoggedShader = true;
         }
 
@@ -162,7 +165,8 @@ namespace Features {
         if (!g_Config.EnableRenderTweaks) return;
 
         uintptr_t slot = Memory::GetGameBase() + kSettingsPtrOffset;
-        uintptr_t settings = *reinterpret_cast<uintptr_t*>(slot);
+        uintptr_t settings = 0;
+        if (!Memory::Read(slot, settings)) return;
         if (settings < 0x10000) return; // not populated yet
 
         if (!g_LoggedApply) {

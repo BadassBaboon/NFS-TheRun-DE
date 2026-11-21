@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <vector>
 
 // Renaming Extreme in the menus.
 //
@@ -28,8 +29,8 @@
 //
 // Replacements are written into the game's own buffer, so they cannot be longer
 // than the space that is actually there. The capacity of a buffer is its own text
-// plus any run of zero bytes after its terminator, since the allocator commonly
-// pads. Anything longer than that is truncated rather than allowed to run into
+// without assuming any bytes after its terminator belong to it. Anything longer
+// than that is truncated rather than allowed to run into
 // whatever string is stored next.
 
 namespace {
@@ -44,26 +45,11 @@ namespace {
 
     // Bounds on walking out to a string's null terminators.
     const size_t kMaxStringLen = 512;
-    // Padding past a terminator that may be used. Kept small deliberately: a long
-    // run of zeroes is more likely to be a different allocation than slack.
-    const size_t kMaxPadding = 16;
-
     bool   g_Done = false;
     int    g_ScanTicks = 0;
     // The ticker runs every 16ms. Scanning the address space is not free, so it
     // is retried about every five seconds until the menu text has been loaded.
     const int kTicksBetweenScans = 300;
-
-    bool Writable(uintptr_t addr, size_t size) {
-        MEMORY_BASIC_INFORMATION mbi;
-        if (!VirtualQuery(reinterpret_cast<LPCVOID>(addr), &mbi, sizeof(mbi))) return false;
-        if (mbi.State != MEM_COMMIT) return false;
-        if (mbi.Protect & (PAGE_GUARD | PAGE_NOACCESS)) return false;
-        if (!(mbi.Protect & (PAGE_READWRITE | PAGE_WRITECOPY |
-                             PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))) return false;
-        uintptr_t regionEnd = reinterpret_cast<uintptr_t>(mbi.BaseAddress) + mbi.RegionSize;
-        return addr + size <= regionEnd;
-    }
 
     // One hit is all this needs; the shared scanner covers the whole user address
     // space, which matters because these buffers land above 0xF0000000.
@@ -79,7 +65,9 @@ namespace {
         size_t back = 0;
         while (back < kMaxStringLen) {
             if (!Memory::IsReadable(start - 1, 1)) return false;
-            if (*reinterpret_cast<const char*>(start - 1) == '\0') break;
+            char ch;
+            if (!Memory::Read(start - 1, ch)) return false;
+            if (ch == '\0') break;
             --start;
             ++back;
         }
@@ -88,45 +76,34 @@ namespace {
         size_t len = 0;
         while (len < kMaxStringLen) {
             if (!Memory::IsReadable(start + len, 1)) return false;
-            if (*reinterpret_cast<const char*>(start + len) == '\0') break;
+            char ch;
+            if (!Memory::Read(start + len, ch)) return false;
+            if (ch == '\0') break;
             ++len;
         }
         if (len >= kMaxStringLen) return false;
 
-        // Usable space is the text itself plus any zero padding that follows its
-        // terminator, minus the one byte the new terminator needs.
-        size_t pad = 0;
-        while (pad < kMaxPadding && Memory::IsReadable(start + len + 1 + pad, 1)
-               && *reinterpret_cast<const char*>(start + len + 1 + pad) == '\0') {
-            ++pad;
-        }
-
-        outStart    = start;
-        outCapacity = len + pad;
+        // Zero bytes after the terminator may belong to another object.
+        // Only the original string's own extent is available for replacement.
+        outStart = start;
+        outCapacity = len;
         return true;
     }
 
     // Writes `text` into the buffer, truncated to what actually fits.
-    void WriteInPlace(const char* what, uintptr_t start, size_t capacity, const std::string& text) {
+    bool WriteInPlace(const char* what, uintptr_t start, size_t capacity, const std::string& text) {
         size_t len = text.size();
         bool truncated = false;
         if (len > capacity) {
             len = capacity;
             truncated = true;
         }
-        if (!Writable(start, capacity + 1)) {
-            Logger::Log("Extreme rename: %s buffer at 0x%08X is not writable. Skipped.", what, start);
-            return;
+        std::vector<char> replacement(capacity + 1, 0);
+        std::memcpy(replacement.data(), text.data(), len);
+        if (!Memory::WriteBytes(start, replacement.data(), replacement.size())) {
+            Logger::Log("Extreme rename: %s buffer is no longer writable; skipped.", what);
+            return false;
         }
-
-        DWORD old;
-        if (!VirtualProtect(reinterpret_cast<LPVOID>(start), capacity + 1, PAGE_READWRITE, &old)) {
-            Logger::Log("Extreme rename: could not unprotect the %s buffer at 0x%08X. Skipped.", what, start);
-            return;
-        }
-        std::memcpy(reinterpret_cast<void*>(start), text.c_str(), len);
-        std::memset(reinterpret_cast<void*>(start + len), 0, capacity + 1 - len);
-        VirtualProtect(reinterpret_cast<LPVOID>(start), capacity + 1, old, &old);
 
         if (truncated) {
             Logger::Log("Extreme rename: %s set to \"%.*s\" — TRUNCATED, the game's buffer holds "
@@ -137,6 +114,7 @@ namespace {
                         what, start, text.c_str(),
                         static_cast<unsigned>(len), static_cast<unsigned>(capacity));
         }
+        return true;
     }
 
     // Replaces every whole-string "EXTREME" near the description buffer, and
@@ -166,21 +144,17 @@ namespace {
         if (from < regionBase + 1) from = regionBase + 1;   // room for the leading null
         if (to > regionEnd - (labelLen + 1)) to = regionEnd - (labelLen + 1);
 
+        if (to <= from) return 0;
+        const uintptr_t snapshotStart = from - 1;
+        std::vector<char> snapshot(to - snapshotStart + labelLen + 1);
+        if (!Memory::ReadBytes(snapshotStart, snapshot.data(), snapshot.size())) return 0;
         int renamed = 0;
         for (uintptr_t a = from; a < to; ++a) {
-            const char* p = reinterpret_cast<const char*>(a);
-            if (p[-1] != '\0') continue;
-            if (p[labelLen] != '\0') continue;
-            if (std::memcmp(p, kLabelText, labelLen) != 0) continue;
-
-            uintptr_t start;
-            size_t    capacity;
-            if (DescribeBuffer(a, start, capacity)) {
-                WriteInPlace("label", start, capacity, Difficulty::kNewLabel);
-                ++renamed;
-            }
-            // Past this copy's terminator. The text just written is shorter or
-            // equal, so it cannot match again anyway.
+            const char* p = snapshot.data() + (a - snapshotStart);
+            if (p[-1] != '\0' || p[labelLen] != '\0' ||
+                std::memcmp(p, kLabelText, labelLen) != 0) continue;
+            if (Memory::VerifyBytes(a, kLabelText, labelLen + 1) &&
+                WriteInPlace("label", a, labelLen, Difficulty::kNewLabel)) ++renamed;
             a += labelLen;
         }
         return renamed;
@@ -204,17 +178,19 @@ namespace Features {
         size_t    descCapacity;
         if (!DescribeBuffer(anchor, descStart, descCapacity)) return;
 
-        WriteInPlace("description", descStart, descCapacity, Difficulty::kNewDescription);
+        // Establish the nearby label before overwriting the anchor.
+        // A stray occurrence of "forewarned" alone is not enough.
 
         int renamed = RenameAllLabels(descStart);
         if (renamed == 0) {
-            Logger::Log("Extreme rename: description renamed, but no standalone \"%s\" string was "
-                        "found within 0x%X bytes of it. The label is unchanged.",
+            Logger::Log("Extreme rename: no standalone \"%s\" string was "
+                        "found within 0x%X bytes of the description. Nothing was changed.",
                         kLabelText, static_cast<unsigned>(kLabelSearchRadius));
         } else {
             Logger::Log("Extreme rename: %d copies of \"%s\" replaced.", renamed, kLabelText);
         }
 
-        g_Done = true;
+        if (renamed > 0)
+            g_Done = WriteInPlace("description", descStart, descCapacity, Difficulty::kNewDescription);
     }
 }

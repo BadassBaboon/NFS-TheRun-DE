@@ -14,6 +14,17 @@ namespace Memory {
     // before walking a pointer chain, where any link may be null or stale.
     bool IsReadable(uintptr_t address, size_t size);
 
+    // Copy through the OS so an allocation disappearing after VirtualQuery
+    // fails cleanly. These do not establish ownership of a game object.
+    bool ReadBytes(uintptr_t address, void* out, size_t size);
+    bool WriteBytes(uintptr_t address, const void* bytes, size_t size);
+    template<typename T> bool Read(uintptr_t address, T& out) {
+        return ReadBytes(address, &out, sizeof(out));
+    }
+    template<typename T> bool Write(uintptr_t address, const T& value) {
+        return WriteBytes(address, &value, sizeof(value));
+    }
+
     // Scans every committed, writable region of the whole user address space for
     // `needle`, writing up to `maxOut` hits into `out` and returning the count.
     //

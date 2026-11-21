@@ -50,11 +50,13 @@ namespace {
         uintptr_t slot = Memory::GetGameBase() + kDifficultyGlobal;
         if (!Memory::IsReadable(slot, sizeof(uintptr_t))) return -1;
 
-        uintptr_t obj = *reinterpret_cast<uintptr_t*>(slot);
+        uintptr_t obj = 0;
+        if (!Memory::Read(slot, obj)) return -1;
         if (obj < 0x10000) return -1;
         if (!Memory::IsReadable(obj + kOffDifficulty, sizeof(int32_t))) return -1;
 
-        int value = *reinterpret_cast<int32_t*>(obj + kOffDifficulty);
+        int32_t value = -1;
+        if (!Memory::Read(obj + kOffDifficulty, value)) return -1;
         // The global is uninitialised until the first race is set up, so anything
         // outside the enum means "not known yet" rather than a difficulty.
         if (value < 0 || value > kDifficultyExpert) return -1;

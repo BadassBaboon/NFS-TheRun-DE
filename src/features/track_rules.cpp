@@ -4,21 +4,47 @@
 #include "../memory.h"
 #include "../logger.h"
 #include <cstdint>
+#include <cfloat>
+
+extern "C" {
+    uint8_t g_DisableOobTimer = 0;
+    float g_OobDisabledDuration = FLT_MAX;
+    uintptr_t g_OobReturn = 0;
+    void OobTimerHookAsm();
+}
+
+// The caller stores ST(0) in a countdown and consumes it with fstp. NOPing
+// its fld returned an empty x87 stack. Supply a non-expiring finite countdown
+// while disabled, and replay the original load otherwise. Install only once.
+asm(
+    ".text\n"
+    ".globl _OobTimerHookAsm\n"
+    "_OobTimerHookAsm:\n"
+    "    movl 0x14(%ecx), %ecx\n"
+    "    pushfl\n"
+    "    cmpb $0, _g_DisableOobTimer\n"
+    "    je 1f\n"
+    "    flds _g_OobDisabledDuration\n"
+    "    jmp 2f\n"
+    "1:\n"
+    "    flds 0x68(%ecx)\n"
+    "2:\n"
+    "    popfl\n"
+    "    jmpl *_g_OobReturn\n"
+);
 
 namespace {
-    // fld dword ptr [ecx+0x68] — the out-of-bounds check, three bytes.
-    const uintptr_t kOobOffset = 0x3FAA8C;
-    const uint8_t   kOobOriginal[3] = { 0xD9, 0x41, 0x68 };
-    const uint8_t   kOobNopped[3]   = { 0x90, 0x90, 0x90 };
+    // mov ecx,[ecx+14h]; fld dword ptr [ecx+68h], followed by ret 4.
+    const uintptr_t kOobOffset = 0x3FAA89;
+    const uint8_t kOobOriginal[6] = { 0x8B, 0x49, 0x14, 0xD9, 0x41, 0x68 };
 
-    // Set when InitTrackRules NOPs the check for good, because the INI asked for
+    // Set when InitTrackRules disables the countdown for good, because the INI asked for
     // it or the time-of-day feature needs it. Run For Your Life must not put it
     // back in that case, so its toggle stands down entirely.
     bool g_OobHeldOff = false;
 
-    // What the mode last left the site as, so the patch is only written on a
-    // transition rather than every tick.
-    bool g_OobModeApplied = false;
+    // Set only after the verified hook has been installed successfully.
+    bool g_OobInstalled = false;
 }
 
 namespace Features {
@@ -29,17 +55,22 @@ namespace Features {
     // Offsets derived from the DriftAttack / Master research tables
     // (absolute CT address - 0x00400000 = module offset):
     //   Checkpoint timer:  008FBF06 -> 0x4FBF06 (NOP 8),  013DB998 -> 0xFDB998 (NOP 5)
-    //   Reset OOB:         007FAA8C -> 0x3FAA8C (NOP 3)   fld [ecx+0x68]
-    //   Wrong-way respawn: exe+408915 -> 0x408915 (NOP 6) fld [esi+0x2924]
+    //   Reset OOB:         007FAA89 -> 0x3FAA89 (hook 6)
+    //   Wrong-way respawn: exe+408915 -> 0x408915 (fldz + padding)
     //
-    // The OOB and wrong-way signatures were captured from a live run and are now
-    // verified before the NOP goes in, so a different build refuses instead of
-    // corrupting code. The two checkpoint-timer sites have not been observed yet
-    // and still use CaptureNop, which logs the original bytes for promotion.
+    // All signatures checked against the retail v1.1 executable before patching.
     void InitTrackRules() {
         if (g_Config.DisableCheckpointTimer) {
-            PatchUtil::CaptureNop("Checkpoint Timer Disable (a)", 0x4FBF06, 8);
-            PatchUtil::CaptureNop("Checkpoint Timer Disable (b)", 0xFDB998, 5);
+            static const uint8_t a[] = { 0xF3, 0x0F, 0x11, 0x81, 0x80, 0x05, 0x00, 0x00 };
+            static const uint8_t b[] = { 0xF3, 0x0F, 0x11, 0x40, 0x04 };
+            const uintptr_t base = Memory::GetGameBase();
+            if (Memory::VerifyBytes(base + 0x4FBF06, a, sizeof(a)) &&
+                Memory::VerifyBytes(base + 0xFDB998, b, sizeof(b))) {
+                PatchUtil::VerifiedNop("Checkpoint Timer Disable (a)", 0x4FBF06, a, sizeof(a));
+                PatchUtil::VerifiedNop("Checkpoint Timer Disable (b)", 0xFDB998, b, sizeof(b));
+            } else {
+                Logger::Log("Checkpoint timer patches skipped: signatures do not match.");
+            }
         }
 
         // The time-of-day feature forces these two on regardless of the INI.
@@ -53,16 +84,26 @@ namespace Features {
                         "the time-of-day feature.");
         }
 
-        if (g_Config.DisableResetOOB || todNeedsThem) {
-            PatchUtil::VerifiedNop("Reset OOB Disable", kOobOffset,
-                                   kOobOriginal, sizeof(kOobOriginal));
-            g_OobHeldOff = true;
+        g_OobHeldOff = g_Config.DisableResetOOB || todNeedsThem;
+        if (g_OobHeldOff || g_Config.RunForYourLife) {
+            const uintptr_t addr = Memory::GetGameBase() + kOobOffset;
+            if (Memory::VerifyBytes(addr, kOobOriginal, sizeof(kOobOriginal))) {
+                g_DisableOobTimer = g_OobHeldOff ? 1 : 0;
+                g_OobReturn = addr + sizeof(kOobOriginal);
+                g_OobInstalled = Memory::InjectJMP(addr,
+                    reinterpret_cast<uintptr_t>(OobTimerHookAsm), sizeof(kOobOriginal));
+            }
+            Logger::Log("OOB countdown hook %s.", g_OobInstalled ? "installed" : "skipped/failed");
         }
 
         if (g_Config.DisableWrongWayRespawn || todNeedsThem) {
             // fld dword ptr [esi+0x2924]
             static const uint8_t kWrongWay[6] = { 0xD9, 0x86, 0x24, 0x29, 0x00, 0x00 };
-            PatchUtil::VerifiedNop("Wrong Way Respawn Disable", 0x408915, kWrongWay, sizeof(kWrongWay));
+            // +2924 is elapsed wrong-way time (incremented at 0x867BEB).
+            // Pass zero to the consumer while preserving its subsequent fstp.
+            static const uint8_t kWrongWayDisabled[6] = { 0xD9, 0xEE, 0x90, 0x90, 0x90, 0x90 };
+            PatchUtil::VerifiedPatch("Wrong Way Respawn Disable", 0x408915,
+                                     kWrongWay, kWrongWayDisabled, sizeof(kWrongWay));
         }
     }
 
@@ -79,37 +120,18 @@ namespace Features {
     //
     // Unlike everything else in this file, this cannot be decided at init: the
     // difficulty is not known until the player picks one, and it can change
-    // between events. So the three bytes are written and restored on transition.
-    // Three bytes, no code cave, and it reverts cleanly the moment the mode
-    // disengages — which is why this is worth doing as a live patch at all.
+    // between events. Toggle the hook's data flag instead of rewriting live code.
+    // A countdown already started retains its duration until the next trigger.
     void UpdateTrackRules() {
         // Something already turned the check off for good. Leave it alone rather
         // than restoring it out from under the setting that asked for it.
-        if (g_OobHeldOff) return;
+        if (g_OobHeldOff || !g_OobInstalled) return;
         if (!g_Config.RunForYourLife) return;
 
         const bool want = Difficulty::RunForYourLifeActive();
-        if (want == g_OobModeApplied) return;
-
-        const uintptr_t addr = Memory::GetGameBase() + kOobOffset;
-        const uint8_t* from = want ? kOobOriginal : kOobNopped;
-        const uint8_t* to   = want ? kOobNopped   : kOobOriginal;
-
-        if (!Memory::VerifyBytes(addr, from, sizeof(kOobOriginal))) {
-            // Someone else owns these bytes. Stop trying, and stop logging about
-            // it, rather than fighting another mod every time the mode toggles.
-            Logger::Log("Track rules: OOB reset site at 0x%08X reads [%s], not what this "
-                        "build expects. Run For Your Life leaves it alone.",
-                        addr, Memory::BytesToHex(addr, sizeof(kOobOriginal)).c_str());
-            g_OobHeldOff = true;
-            return;
-        }
-
-        if (Memory::PatchBytes(addr, to, sizeof(kOobOriginal))) {
-            g_OobModeApplied = want;
-            Logger::Log("Track rules: OOB reset %s at 0x%08X, Run For Your Life %s.",
-                        want ? "disabled" : "restored", addr,
-                        want ? "engaged" : "disengaged");
-        }
+        if (want == (g_DisableOobTimer != 0)) return;
+        g_DisableOobTimer = want ? 1 : 0;
+        Logger::Log("Track rules: OOB countdown %s for subsequent triggers.",
+                    want ? "disabled" : "restored");
     }
 }

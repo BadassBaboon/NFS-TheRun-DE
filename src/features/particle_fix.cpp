@@ -128,7 +128,9 @@ namespace Features {
             // when the game cannot reach it (always true uncapped). Falls back to
             // the INI figure until both are known.
             float fps = g_CurrentFpsCap;
-            if (fps <= 0.0f) fps = (g_Config.FPSLimit > 0) ? static_cast<float>(g_Config.FPSLimit) : 60.0f;
+            // Without a working unlocker there is no evidence of a higher rate.
+            // Keep stock particles unchanged until a cap/measurement is known.
+            if (fps <= 0.0f) fps = 30.0f;
             if (g_MeasuredFps > 0.0f && g_MeasuredFps < fps) fps = g_MeasuredFps;
             scale = (fps > 30.0f) ? (30.0f / fps) : 1.0f;
         }

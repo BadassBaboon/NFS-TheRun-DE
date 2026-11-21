@@ -14,9 +14,9 @@ namespace Features {
         // Module offset 0x568F50 (absolute 0x00968F50 at the default 0x00400000 base).
         // JNE -> JMP: makes hidden UI label entries (QA debug, photo mode) always visible
         uintptr_t addr = Memory::GetGameBase() + 0x568F50;
-        const uint8_t jne = 0x75;
+        const uint8_t expected[] = { 0x83, 0x7C, 0x24, 0x38, 0x02, 0x75, 0x29 };
 
-        if (Memory::VerifyBytes(addr, &jne, 1)) {
+        if (Memory::VerifyBytes(addr - 5, expected, sizeof(expected))) {
             // Fast path: exact address match
             uint8_t jmp = 0xEB;
             if (Memory::PatchBytes(addr, &jmp, 1)) {
@@ -27,8 +27,8 @@ namespace Features {
         } else {
             // Fallback: AOB scan in case of a minor exe version difference
             HMODULE mainMod = GetModuleHandle(NULL);
-            // 8B 46 40 38 18 75 29 — the JNE is at pattern+5
-            const char pattern[] = "\x8B\x46\x40\x38\x18\x75\x29";
+            // Match the same comparison and branch as the verified fixed site.
+            const char pattern[] = "\x83\x7C\x24\x38\x02\x75\x29";
             const char mask[]    = "xxxxxxx";
             uintptr_t foundAddr = Memory::FindPatternModule(mainMod, pattern, mask);
             if (foundAddr != 0) {

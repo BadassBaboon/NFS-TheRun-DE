@@ -8,8 +8,15 @@ static HMODULE g_hModule = NULL;
 
 DWORD WINAPI MainThread(LPVOID /*lpParam*/) {
     // Determine path of the DLL to locate the INI file alongside it
-    char dllPath[MAX_PATH];
-    GetModuleFileNameA(g_hModule, dllPath, MAX_PATH);
+    // Hooks and the ticker live for the rest of the process. Keep their code
+    // mapped even if an ASI loader later releases its reference.
+    HMODULE pinned = nullptr;
+    if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                           GET_MODULE_HANDLE_EX_FLAG_PIN,
+                           reinterpret_cast<LPCSTR>(g_hModule), &pinned)) return 1;
+    char dllPath[MAX_PATH] = {};
+    DWORD pathLength = GetModuleFileNameA(g_hModule, dllPath, MAX_PATH);
+    if (!pathLength || pathLength >= MAX_PATH) return 1;
 
     std::string pathStr(dllPath);
     size_t lastSlash = pathStr.find_last_of("\\/");
@@ -40,16 +47,14 @@ DWORD WINAPI MainThread(LPVOID /*lpParam*/) {
     Features::InitNosTuning();
     Features::InitTodRandomizer();
     Features::InitGinsuDiagnostics();
-    Features::InitLoadingVSyncOptimization();
     Features::InitFramerateUnlocker();
 
-    Logger::Log("All features initialized successfully.");
+    Logger::Log("Feature initialization finished; see individual results above.");
 
     // 4. Background Ticker Loop
     while (true) {
         Features::UpdateFramerateUnlocker();
         Features::UpdateParticleFix();
-        Features::UpdateLoadingVSync();
         Features::UpdateDifficulty();     // decides whether the mode is engaged
         Features::UpdateInputState();     // reads that decision, so it runs after
         Features::UpdateAiDifficulty();
@@ -73,10 +78,15 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID /*lpvReserved*/)
     case DLL_PROCESS_ATTACH:
         g_hModule = hinstDLL;
         DisableThreadLibraryCalls(hinstDLL);
-        CreateThread(NULL, 0, MainThread, NULL, 0, NULL);
+        {
+            HANDLE thread = CreateThread(NULL, 0, MainThread, NULL, 0, NULL);
+            if (!thread) return FALSE;
+            CloseHandle(thread);
+        }
         break;
     case DLL_PROCESS_DETACH:
-        Logger::Close();
+        // Do not acquire the logger lock under the loader lock. At process
+        // termination its owner may already have been terminated by Windows.
         break;
     }
     return TRUE;
